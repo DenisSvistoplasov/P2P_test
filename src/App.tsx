@@ -1,7 +1,6 @@
 import { useState, useRef } from "react";
 import { P2P } from "./api/p2p";
 import { Server } from "./api/server";
-// import "./styles.css";
 
 export default function App() {
   const [value, setValue] = useState("Hello, Vova!");
@@ -81,7 +80,7 @@ export default function App() {
   };
 
   return (
-    <div className="App">
+    <div className="App" style={{textAlign: 'center'}}>
       <input
         style={{ marginBottom: 10 }}
         type="text"
