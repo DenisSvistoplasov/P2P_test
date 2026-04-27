@@ -1,6 +1,7 @@
 {
   "name": "react-typescript",
   "version": "1.0.0",
+  "homepage": "https://denissvistoplasov.github.io/P2P_test",
   "description": "React and TypeScript example starter project",
   "keywords": [
     "typescript",
