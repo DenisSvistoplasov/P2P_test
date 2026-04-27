@@ -21,15 +21,22 @@ const iceServers = [
   { urls: 'stun:stun.voipbuster.com:3478' },
 ];
 
+let resolveChannel: (value: RTCDataChannel) => void = () => {};
+const channelPromise: Promise<RTCDataChannel> = new Promise<RTCDataChannel>((resolve) => {
+  resolveChannel = resolve;
+});
+
 export const P2P = {
   connection: null as null | RTCPeerConnection,
   channel: null as null | RTCDataChannel,
+  channelPromise,
 
   async createOffer() {
     const connection = new RTCPeerConnection({ iceServers });
     this.connection = connection;
     const channel = connection.createDataChannel('fileTransfer');
     this.channel = channel;
+    channel.onopen = () => resolveChannel(channel);
 
     const candidates: RTCIceCandidate[] = [];
 
@@ -94,6 +101,8 @@ export const P2P = {
 
     await candidatesPromise;
 
+    connection.ondatachannel = (event) => resolveChannel(event.channel);
+
     // 3. Отправить СВОИ данные в БД (уже как answer)
     if (connection.localDescription) {
       return {
@@ -116,30 +125,30 @@ export const P2P = {
     }
   },
 
-  onOpen(f: (channel: RTCDataChannel) => void) {
-    console.log('onOpen this.channel: ', !!this.channel);
-    if (this.channel) {
-      const channel = this.channel;
-      this.channel.onopen = () => f(channel);
-    }
-  },
+  // onOpen(f: (channel: RTCDataChannel) => void) {
+  //   if (this.channel) {
+  //     const channel = this.channel;
+  //     this.channel.onopen = () => f(channel);
+  //   }
+  // },
 
-  onMessage(f: (message: string) => void) {
-    if (this.connection) {
-      this.connection.ondatachannel = (event) => {
-        console.log('ondatachannel');
+  // onMessage(f: (message: string) => void) {
+  //   if (this.connection) {
+  //     this.connection.ondatachannel = (event) => {
+  //       console.log('ondatachannel');
 
-        const channel = event.channel;
-        channel.onmessage = (message) => {
-          console.log('onmessage');
-          f(message.data);
-        };
-      };
-    } else {
-      console.log('NO connection2');
-    }
-  },
+  //       const channel = event.channel;
+  //       channel.onmessage = (message) => {
+  //         console.log('onmessage');
+  //         f(message.data);
+  //       };
+  //     };
+  //   } else {
+  //     console.log('NO connection2');
+  //   }
+  // },
 
+  // for recipient
   async getChannel() {
     if (this.connection) {
       let resolveChannel!: (value: RTCDataChannel) => void;
