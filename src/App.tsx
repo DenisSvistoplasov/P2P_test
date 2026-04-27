@@ -1,7 +1,7 @@
 import { useState, useRef } from "react";
 import { P2P } from "./api/p2p";
 import { Server } from "./api/server";
-import "./styles.css";
+// import "./styles.css";
 
 export default function App() {
   const [value, setValue] = useState("Hello, Vova!");
@@ -56,10 +56,7 @@ export default function App() {
 
     P2P.onMessage(setMessage);
 
-    P2P.onOpen((channel) => {
-      setLogs((logs) => [...logs, "onOpen"]);
-      setChannel(channel);
-    });
+    P2P.getChannel().then((channel) => channel && setChannel(channel));
 
     setIsLoading((state) => ({ ...state, createAnswer: false }));
   };

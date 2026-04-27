@@ -1,0 +1,41 @@
+# .github/workflows/deploy.yml
+name: Build and Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [ "main" ]  # Укажите вашу основную ветку, если она называется 'master', замените на неё
+
+# Эти permissions необходимы для того, чтобы GitHub Actions мог записать изменения в ваш репозиторий
+permissions:
+  contents: write
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    # Эта настройка помогает избежать конфликтов при частых пушах
+    concurrency: ci-${{ github.ref }}
+
+    steps:
+      # 1. Клонируем репозиторий
+      - name: Checkout 🛎️
+        uses: actions/checkout@v4
+
+      # 2. Устанавливаем Node.js (используйте ту версию, которая нужна вашему проекту)
+      - name: Setup Node.js ⚙️
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20' # Или '18', 'lts/*' и т.д.
+          cache: 'npm'       # Это кеширует node_modules для ускорения сборки
+
+      # 3. Устанавливаем зависимости и собираем проект
+      - name: Install and Build 🔧
+        run: |
+          npm ci          # Чистая установка зависимостей (рекомендуется для CI)
+          npm run build   # Команда сборки из package.json
+
+      # 4. Деплоим собранный проект из папки 'docs' в ветку 'gh-pages'
+      - name: Deploy 🚀
+        uses: JamesIves/github-pages-deploy-action@v4
+        with:
+          folder: build    #  <--- (ВАЖНО) Указываем папку, которую нужно опубликовать
+          branch: gh-pages # Ветка, в которую будет развернут сайт

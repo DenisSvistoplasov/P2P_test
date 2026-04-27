@@ -5,20 +5,20 @@ export type P2pConnectionData = {
 
 const iceServers = [
   // Google (5 серверов)
-  { urls: "stun:stun.l.google.com:19302" },
-  { urls: "stun:stun1.l.google.com:19302" },
-  { urls: "stun:stun2.l.google.com:19302" },
-  { urls: "stun:stun3.l.google.com:19302" },
-  { urls: "stun:stun4.l.google.com:19302" },
+  { urls: 'stun:stun.l.google.com:19302' },
+  { urls: 'stun:stun1.l.google.com:19302' },
+  { urls: 'stun:stun2.l.google.com:19302' },
+  { urls: 'stun:stun3.l.google.com:19302' },
+  { urls: 'stun:stun4.l.google.com:19302' },
 
   // Mozilla
-  { urls: "stun:stun.services.mozilla.com:3478" },
+  { urls: 'stun:stun.services.mozilla.com:3478' },
 
   // Общедоступные
-  { urls: "stun:stun.stunprotocol.org:3478" },
-  { urls: "stun:stun.ekiga.net:3478" },
-  { urls: "stun:stun.ideasip.com:3478" },
-  { urls: "stun:stun.voipbuster.com:3478" },
+  { urls: 'stun:stun.stunprotocol.org:3478' },
+  { urls: 'stun:stun.ekiga.net:3478' },
+  { urls: 'stun:stun.ideasip.com:3478' },
+  { urls: 'stun:stun.voipbuster.com:3478' },
 ];
 
 export const P2P = {
@@ -28,7 +28,7 @@ export const P2P = {
   async createOffer() {
     const connection = new RTCPeerConnection({ iceServers });
     this.connection = connection;
-    const channel = connection.createDataChannel("fileTransfer");
+    const channel = connection.createDataChannel('fileTransfer');
     this.channel = channel;
 
     const candidates: RTCIceCandidate[] = [];
@@ -69,7 +69,7 @@ export const P2P = {
     // 1. Загрузить данные А в свой PeerConnection
     await connection.setRemoteDescription(new RTCSessionDescription(offer.sdp));
     offer.candidates.forEach((candidate) =>
-      connection.addIceCandidate(new RTCIceCandidate(candidate))
+      connection.addIceCandidate(new RTCIceCandidate(candidate)),
     );
 
     // 2. Создать СВОИ данные (как А в этапе 1)
@@ -97,7 +97,7 @@ export const P2P = {
     // 3. Отправить СВОИ данные в БД (уже как answer)
     if (connection.localDescription) {
       return {
-        sdp: { type: "answer" as const, sdp: connection.localDescription.sdp },
+        sdp: { type: 'answer' as const, sdp: connection.localDescription.sdp },
         candidates,
       };
     }
@@ -106,17 +106,18 @@ export const P2P = {
   async applyAnswer(answer: P2pConnectionData) {
     if (this.connection) {
       await this.connection.setRemoteDescription(
-        new RTCSessionDescription(answer.sdp)
+        new RTCSessionDescription(answer.sdp),
       );
       answer.candidates.forEach((candidate) =>
-        this.connection?.addIceCandidate(new RTCIceCandidate(candidate))
+        this.connection?.addIceCandidate(new RTCIceCandidate(candidate)),
       );
     } else {
-      console.log("NO connection");
+      console.log('NO connection');
     }
   },
 
   onOpen(f: (channel: RTCDataChannel) => void) {
+    console.log('onOpen this.channel: ', !!this.channel);
     if (this.channel) {
       const channel = this.channel;
       this.channel.onopen = () => f(channel);
@@ -124,20 +125,33 @@ export const P2P = {
   },
 
   onMessage(f: (message: string) => void) {
-    console.log("onMessage");
-    console.log("this.connection", !!this.connection);
     if (this.connection) {
       this.connection.ondatachannel = (event) => {
-        console.log("ondatachannel");
+        console.log('ondatachannel');
 
         const channel = event.channel;
         channel.onmessage = (message) => {
-          console.log("onmessage");
+          console.log('onmessage');
           f(message.data);
         };
       };
     } else {
-      console.log("NO connection2");
+      console.log('NO connection2');
+    }
+  },
+
+  async getChannel() {
+    if (this.connection) {
+      let resolveChannel!: (value: RTCDataChannel) => void;
+      const channelPromise = new Promise<RTCDataChannel>((resolve) => {
+        resolveChannel = resolve;
+      });
+
+      this.connection.ondatachannel = (event) => {
+        resolveChannel(event.channel);
+      };
+
+      return channelPromise;
     }
   },
 };
