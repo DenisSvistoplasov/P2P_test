@@ -1,5 +1,6 @@
 import { P2pConnectionData } from "./types";
 
+
 const iceServers = [
   // Google (5 серверов)
   { urls: 'stun:stun.l.google.com:19302' },
@@ -18,22 +19,34 @@ const iceServers = [
   { urls: 'stun:stun.voipbuster.com:3478' },
 ];
 
-let resolveChannel: (value: RTCDataChannel) => void = () => {};
-const channelPromise: Promise<RTCDataChannel> = new Promise<RTCDataChannel>((resolve) => {
-  resolveChannel = resolve;
-});
+export class P2P {
+  private connection: null | RTCPeerConnection = null;
+  private resolveChannel: (value: RTCDataChannel) => void = () => {};
+  private closeHandler: () => void = () => {};
+  channelPromise!: Promise<RTCDataChannel>;
 
-export const P2P = {
-  connection: null as null | RTCPeerConnection,
-  channel: null as null | RTCDataChannel,
-  channelPromise,
+  constructor() {
+    this.channelPromise = new Promise<RTCDataChannel>((resolve) => {
+      this.resolveChannel = resolve;
+    });
+  }
 
-  async createOffer() {
+  createOffer = async () => {
     const connection = new RTCPeerConnection({ iceServers });
     this.connection = connection;
     const channel = connection.createDataChannel('fileTransfer');
-    this.channel = channel;
-    channel.onopen = () => resolveChannel(channel);
+    // this.channel = channel;
+    connection.oniceconnectionstatechange = () => {
+      if (
+        connection.iceConnectionState === 'disconnected' ||
+        connection.iceConnectionState === 'failed'
+      ) {
+        this.closeHandler();
+        connection.close();
+      }
+    };
+
+    channel.onopen = () => this.resolveChannel(channel);
 
     const candidates: RTCIceCandidate[] = [];
 
@@ -64,11 +77,21 @@ export const P2P = {
         candidates: candidates,
       };
     }
-  },
+  };
 
-  async createAnswer(offer: P2pConnectionData) {
+  createAnswer = async (offer: P2pConnectionData) => {
     const connection = new RTCPeerConnection({ iceServers });
     this.connection = connection;
+
+    connection.oniceconnectionstatechange = () => {
+      if (
+        connection.iceConnectionState === 'disconnected' ||
+        connection.iceConnectionState === 'failed'
+      ) {
+        this.closeHandler();
+        connection.close();
+      }
+    };
 
     // 1. Загрузить данные А в свой PeerConnection
     await connection.setRemoteDescription(new RTCSessionDescription(offer.sdp));
@@ -98,7 +121,7 @@ export const P2P = {
 
     await candidatesPromise;
 
-    connection.ondatachannel = (event) => resolveChannel(event.channel);
+    connection.ondatachannel = (event) => this.resolveChannel(event.channel);
 
     // 3. Отправить СВОИ данные в БД (уже как answer)
     if (connection.localDescription) {
@@ -107,9 +130,9 @@ export const P2P = {
         candidates,
       };
     }
-  },
+  };
 
-  async applyAnswer(answer: P2pConnectionData) {
+  applyAnswer = async (answer: P2pConnectionData) => {
     if (this.connection) {
       await this.connection.setRemoteDescription(
         new RTCSessionDescription(answer.sdp),
@@ -120,44 +143,7 @@ export const P2P = {
     } else {
       console.log('NO connection');
     }
-  },
+  };
 
-  // onOpen(f: (channel: RTCDataChannel) => void) {
-  //   if (this.channel) {
-  //     const channel = this.channel;
-  //     this.channel.onopen = () => f(channel);
-  //   }
-  // },
-
-  // onMessage(f: (message: string) => void) {
-  //   if (this.connection) {
-  //     this.connection.ondatachannel = (event) => {
-  //       console.log('ondatachannel');
-
-  //       const channel = event.channel;
-  //       channel.onmessage = (message) => {
-  //         console.log('onmessage');
-  //         f(message.data);
-  //       };
-  //     };
-  //   } else {
-  //     console.log('NO connection2');
-  //   }
-  // },
-
-  // for recipient
-  async getChannel() {
-    if (this.connection) {
-      let resolveChannel!: (value: RTCDataChannel) => void;
-      const channelPromise = new Promise<RTCDataChannel>((resolve) => {
-        resolveChannel = resolve;
-      });
-
-      this.connection.ondatachannel = (event) => {
-        resolveChannel(event.channel);
-      };
-
-      return channelPromise;
-    }
-  },
-};
+  addCloseHandler = (f: () => void) => (this.closeHandler = f);
+}

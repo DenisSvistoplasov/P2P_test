@@ -1,0 +1,260 @@
+import {
+  createContext,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
+import { Server } from './api/server';
+import { Pair } from './api/types';
+import { P2P } from './api/p2p copy';
+import { Chat, Message } from './Chat';
+
+type PairState = 0 | 1 | 2 | 3;
+
+const dataContext = createContext({});
+
+export const Initializer = () => {
+  const isInitializingRef = useRef(false);
+  const [userId, setUserId] = useState<string>('');
+  const [pairs, setPairs] = useState<Pair[]>([]);
+  const p2pInstancesRef = useRef<Record<string, P2P>>({}); // pairId : p2p-instance
+  const [p2pChannels, setP2pChannels] = useState<
+    Record<string, RTCDataChannel>
+  >({}); // pairId : channel
+  const [currentPairId, setCurrentPairId] = useState<string>('');
+  const [messagesMap, setMessagesMap] = useState<Record<string, Message[]>>({}); // pairId : Message[]
+
+  const pairIds = useMemo(() => pairs.map((pair) => pair.pairId), [pairs]);
+
+  const pairsState = useMemo(() => {
+    const map: Record<string, PairState> = {};
+    pairs.forEach((pair) => {
+      if (p2pChannels[pair.pairId]) return (map[pair.pairId] = 3);
+      if (pair.answer) return (map[pair.pairId] = 2);
+      if (pair.offer) return (map[pair.pairId] = 1);
+      map[pair.pairId] = 0;
+    });
+    return map;
+  }, [pairs, p2pChannels]);
+
+  // Initial
+  useEffect(() => {
+    if (isInitializingRef.current) return;
+
+    isInitializingRef.current = true;
+
+    const localUserId = localStorage.getItem('userId') || '';
+
+    Server.getInitial(localUserId).then((data) => {
+      const userId = data.yourId;
+      setUserId(userId);
+      localStorage.setItem('userId', data.yourId);
+
+      data.pairs.forEach((pair) => {
+        setPairs((pairs) => [...pairs, pair]);
+
+        // New pair -> new p2p instance
+        const p2pInstance = new P2P();
+        p2pInstancesRef.current[pair.pairId] = p2pInstance;
+        p2pInstance.channelPromise.then((channel) => {
+          setP2pChannels((p2pChannels) => ({
+            ...p2pChannels,
+            [pair.pairId]: channel,
+          }));
+          channel.onmessage = (event) => {
+            setMessagesMap((messagesMap) => {
+              const messages = messagesMap[pair.pairId] || [];
+              return {
+                ...messagesMap,
+                [pair.pairId]: [...messages, { text: event.data }],
+              };
+            });
+          };
+        });
+
+        // Initialize messages array
+        setMessagesMap((messagesMap) => ({
+          ...messagesMap,
+          [pair.pairId]: [],
+        }));
+
+        // Create offer
+        if (userId === pair.senderId) {
+          p2pInstance.createOffer().then((offer) => {
+            if (!offer) return console.error('offer not created');
+
+            Server.setOffer({
+              userId,
+              partnerId: pair.receiverId,
+              offer,
+            });
+          });
+        }
+      });
+    });
+  }, []);
+
+  // Listening
+  useEffect(() => {
+    if (userId) {
+      Server.listenPairs(userId, (pairChanges) => {
+        pairChanges.added?.forEach((pair) => {
+          setPairs((pairs) => [...pairs, pair]);
+
+          // New pair -> new p2p instance
+          const p2pInstance = new P2P();
+          p2pInstancesRef.current[pair.pairId] = p2pInstance;
+          p2pInstance.channelPromise.then((channel) => {
+            setP2pChannels((p2pChannels) => ({
+              ...p2pChannels,
+              [pair.pairId]: channel,
+            }));
+            channel.onmessage = (event) => {
+              setMessagesMap((messagesMap) => {
+                const messages = messagesMap[pair.pairId] || [];
+                return {
+                  ...messagesMap,
+                  [pair.pairId]: [...messages, { text: event.data }],
+                };
+              });
+            };
+          });
+
+          // Initialize messages array
+          setMessagesMap((messagesMap) => ({
+            ...messagesMap,
+            [pair.pairId]: [],
+          }));
+
+          // Create offer
+          if (userId === pair.senderId) {
+            p2pInstance.createOffer().then((offer) => {
+              if (!offer) return console.error('offer not created');
+
+              Server.setOffer({
+                userId,
+                partnerId: pair.receiverId,
+                offer,
+              });
+            });
+          }
+        });
+
+        pairChanges.modified?.forEach((pair) => {
+          setPairs((pairs) =>
+            pairs.map((p) => (p.pairId === pair.pairId ? pair : p)),
+          );
+
+          const p2pInstance = p2pInstancesRef.current[pair.pairId];
+
+          if (!p2pInstance)
+            return console.error(
+              'p2pInstance not found for modified pair',
+              pair.pairId,
+            );
+
+          // Create answer
+          if (userId === pair.receiverId && pair.offer && !pair.answer) {
+            p2pInstance.createAnswer(pair.offer).then((answer) => {
+              if (!answer) return console.error('answer not created');
+
+              Server.setAnswer({
+                userId,
+                partnerId: pair.senderId,
+                answer,
+              });
+            });
+          }
+
+          // Apply answer
+          if (userId === pair.senderId && pair.answer) {
+            p2pInstance.applyAnswer(pair.answer);
+          }
+        });
+
+        pairChanges.removed?.forEach((pairId) => {
+          setPairs((pairs) => pairs.filter((p) => p.pairId !== pairId));
+
+          const p2pInstance = p2pInstancesRef.current[pairId];
+
+          if (!p2pInstance)
+            return console.error(
+              'p2pInstance not found for removed pair',
+              pairId,
+            );
+
+          delete p2pInstancesRef.current[pairId];
+        });
+      });
+
+      const exit = () => Server.exit(userId);
+      window.addEventListener('beforeunload', exit);
+      return () => {
+        window.removeEventListener('beforeunload', exit);
+      };
+    }
+  }, [userId]);
+
+  const sendMessage = useCallback(
+    (text: string) => {
+      p2pChannels[currentPairId]?.send(text);
+      setMessagesMap((messagesMap) => {
+        const messages = messagesMap[currentPairId] || [];
+        return {
+          ...messagesMap,
+          [currentPairId]: [...messages, { text, isOwner: true }],
+        };
+      });
+    },
+    [currentPairId],
+  );
+
+  if (!userId) return <div>Loading...</div>;
+
+  return (
+    <div>
+      <h1>Current user: {userId}</h1>
+
+      <div style={{ display: 'flex' }}>
+        <div>
+          <h2>Users</h2>
+          <ul style={{ listStyle: 'none', width: 200 }}>
+            {pairIds.map((pairId) => (
+              <li key={pairId}>
+                <button
+                  onClick={() => setCurrentPairId(pairId)}
+                  style={{
+                    backgroundColor: ['#ccc', '#cc6', '#5df', '#6f7'][
+                      pairsState[pairId]
+                    ],
+                    cursor: 'pointer',
+                  }}
+                >
+                  {pairId + ' State: ' + pairsState[pairId]}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        <div>
+          <h2>Chat</h2>
+          {currentPairId ? (
+            <Chat
+              interlocutorId={
+                currentPairId.split('_vs_').find((id) => id != userId)!
+              }
+              connected={pairsState[currentPairId] === 3}
+              messages={messagesMap[currentPairId]}
+              send={sendMessage}
+            />
+          ) : (
+            <span>Select pair</span>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
