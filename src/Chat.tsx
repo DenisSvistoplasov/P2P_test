@@ -1,17 +1,42 @@
-import { FC, useState } from 'react';
+import { FC, useRef, useState } from 'react';
+import { P2pMessage } from './Initializer';
 
-export type Message = {
+export type TextMessage = {
+  type: 'text';
   text: string;
   isOwner?: boolean;
 };
+export type ImageMessage = {
+  type: 'image';
+  name: string;
+  mime: string;
+  url: string;
+  size: number; // bytes
+  isOwner?: boolean;
+};
+
+export type Message = TextMessage | ImageMessage;
 
 export const Chat: FC<{
   interlocutorId: string;
   connected: boolean;
   messages: Message[];
-  send: (text: string) => void;
+  send: (message: string | File) => void;
 }> = ({ interlocutorId, connected, messages, send }) => {
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [text, setText] = useState<string>('');
+
+  const onFileFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0] || null;
+    setSelectedFile(file);
+  };
+
+  const sendImage = () => {
+    if (!selectedFile) return;
+
+    send(selectedFile);
+    setSelectedFile(null);
+  };
 
   const onClick = () => {
     const trimmedText = text.trim();
@@ -44,7 +69,18 @@ export const Chat: FC<{
                 backgroundColor: message.isOwner ? 'lightgreen' : 'lightblue',
               }}
             >
-              {message.text}
+              {message.type === 'text' ? (
+                <span>{message.text}</span>
+              ) : (
+                <div>
+                  {' '}
+                  <img
+                    src={message.url}
+                    style={{ width: 100, height: 100, objectFit: 'contain' }}
+                  />{' '}
+                  {message.name}, size: {formateFileSize(message.size)}
+                </div>
+              )}
             </li>
           ))}
         </ul>
@@ -67,7 +103,30 @@ export const Chat: FC<{
         <button onClick={onClick} disabled={!connected}>
           Send
         </button>
+
+        <input
+          type="file"
+          id="fileInput"
+          accept="image/*"
+          onChange={onFileFileChange}
+        />
+        <button onClick={sendImage} disabled={!connected || !selectedFile}>
+          Send Image
+        </button>
       </div>
     </div>
   );
 };
+
+const formateFileSize = (bytes: number) => {
+  if (bytes < 1_024) return bytes + 'B';
+
+  const kilo = Math.floor(bytes / 1_024);
+  if (kilo < 1_024) return kilo + 'KB';
+
+  const mega = Math.floor(kilo / 1_024);
+  if (mega < 1_024) return mega + 'MB';
+
+  const gigo = Math.floor(mega / 1_024);
+  return gigo + 'GB';
+}

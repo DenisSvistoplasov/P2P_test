@@ -9,7 +9,7 @@ import {
 import axios from 'axios';
 
 const BASE_URL = 'https://backend-on-render-com.onrender.com/api/p2p/';
-let count = 0;
+
 export const Server = {
   getInitial(userId?: string) {
     return axios
@@ -30,10 +30,14 @@ export const Server = {
       if (data !== 'no changes') {
         onChanges(data);
       }
+      this.listenPairs(userId, onChanges);
     } catch (error) {
+      if (axios.isAxiosError(error) && error.response?.status === 404) {
+        console.log(`404: пользователь ${userId} не найден, опрос остановлен`);
+        return;
+      }
       console.log(error);
-    } finally {
-      if (count++ < 10) this.listenPairs(userId, onChanges);
+      this.listenPairs(userId, onChanges);
     }
   },
 

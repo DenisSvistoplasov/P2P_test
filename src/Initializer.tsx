@@ -10,10 +10,32 @@ import { Server } from './api/server';
 import { Pair } from './api/types';
 import { P2P } from './api/p2p copy';
 import { Chat, Message } from './Chat';
+import { concatenateBuffers } from './utils';
+
+export type P2pTextMessage = {
+  type: 'text';
+  text: string;
+};
+export type P2pImageMessage = {
+  type: 'meta';
+  name: string;
+  mime: string;
+  totalChunks: number;
+  size: number; // bytes
+};
+export type P2pMessage = P2pTextMessage | P2pImageMessage;
+
+type FileMeta = {
+  name: string;
+  mime: string;
+  totalChunks: number;
+  chunks: ArrayBuffer[];
+  size: number; // bytes
+};
 
 type PairState = 0 | 1 | 2 | 3;
 
-const dataContext = createContext({});
+const CHUNK_SIZE = 16384; // 16 КБ
 
 export const Initializer = () => {
   const isInitializingRef = useRef(false);
@@ -25,6 +47,8 @@ export const Initializer = () => {
   >({}); // pairId : channel
   const [currentPairId, setCurrentPairId] = useState<string>('');
   const [messagesMap, setMessagesMap] = useState<Record<string, Message[]>>({}); // pairId : Message[]
+  console.log('messagesMap: ', messagesMap);
+  const filesMetaMapRef = useRef<Record<string, FileMeta>>({}); // pairId : FIleMeta
 
   const pairIds = useMemo(() => pairs.map((pair) => pair.pairId), [pairs]);
 
@@ -64,13 +88,62 @@ export const Initializer = () => {
             [pair.pairId]: channel,
           }));
           channel.onmessage = (event) => {
-            setMessagesMap((messagesMap) => {
-              const messages = messagesMap[pair.pairId] || [];
-              return {
-                ...messagesMap,
-                [pair.pairId]: [...messages, { text: event.data }],
-              };
-            });
+            if (typeof event.data === 'string') {
+              const message = JSON.parse(event.data) as P2pMessage;
+              if (message.type === 'text') {
+                setMessagesMap((messagesMap) => {
+                  const messages = messagesMap[pair.pairId] || [];
+                  return {
+                    ...messagesMap,
+                    [pair.pairId]: [...messages, message],
+                  };
+                });
+              } else {
+                // meta
+                filesMetaMapRef.current[pair.pairId] = {
+                  ...message,
+                  chunks: [],
+                };
+              }
+            } else if (event.data instanceof ArrayBuffer) {
+              // arrayBuffer
+              const meta = filesMetaMapRef.current[pair.pairId];
+              if (!meta) return console.error('no meta');
+
+              // Добавляем пришедшие данные
+              meta.chunks.push(event.data);
+
+              // Если собрали все чанки
+              if (meta.chunks.length === meta.totalChunks) {
+                const fullBuffer = concatenateBuffers(meta.chunks);
+                const blob = new Blob([fullBuffer], {
+                  type: meta.mime,
+                });
+                const url = URL.createObjectURL(blob);
+
+                setMessagesMap((messagesMap) => {
+                  const messages = messagesMap[pair.pairId] || [];
+                  return {
+                    ...messagesMap,
+                    [pair.pairId]: [
+                      ...messages,
+                      {
+                        type: 'image',
+                        name: meta.name,
+                        mime: meta.mime,
+                        url,
+                        size: meta.size
+                      },
+                    ],
+                  };
+                });
+              }
+            }
+          };
+          channel.onclose = () => {
+            alert('Connection closed');
+            delete p2pInstancesRef.current[pair.pairId];
+            delete p2pChannels[pair.pairId];
           };
         });
 
@@ -112,13 +185,62 @@ export const Initializer = () => {
               [pair.pairId]: channel,
             }));
             channel.onmessage = (event) => {
-              setMessagesMap((messagesMap) => {
-                const messages = messagesMap[pair.pairId] || [];
-                return {
-                  ...messagesMap,
-                  [pair.pairId]: [...messages, { text: event.data }],
-                };
-              });
+              if (typeof event.data === 'string') {
+                const message = JSON.parse(event.data) as P2pMessage;
+                if (message.type === 'text') {
+                  setMessagesMap((messagesMap) => {
+                    const messages = messagesMap[pair.pairId] || [];
+                    return {
+                      ...messagesMap,
+                      [pair.pairId]: [...messages, message],
+                    };
+                  });
+                } else {
+                  // meta
+                  filesMetaMapRef.current[pair.pairId] = {
+                    ...message,
+                    chunks: [],
+                  };
+                }
+              } else if (event.data instanceof ArrayBuffer) {
+                // arrayBuffer
+                const meta = filesMetaMapRef.current[pair.pairId];
+                if (!meta) return console.error('no meta');
+
+                // Добавляем пришедшие данные
+                meta.chunks.push(event.data);
+
+                // Если собрали все чанки
+                if (meta.chunks.length === meta.totalChunks) {
+                  const fullBuffer = concatenateBuffers(meta.chunks);
+                  const blob = new Blob([fullBuffer], {
+                    type: meta.mime,
+                  });
+                  const url = URL.createObjectURL(blob);
+
+                  setMessagesMap((messagesMap) => {
+                    const messages = messagesMap[pair.pairId] || [];
+                    return {
+                      ...messagesMap,
+                      [pair.pairId]: [
+                        ...messages,
+                        {
+                          type: 'image',
+                          name: meta.name,
+                          mime: meta.mime,
+                          url,
+                          size: meta.size
+                        },
+                      ],
+                    };
+                  });
+                }
+              }
+            };
+            channel.onclose = () => {
+              alert('Connection closed');
+              delete p2pInstancesRef.current[pair.pairId];
+              delete p2pChannels[pair.pairId];
             };
           });
 
@@ -146,6 +268,92 @@ export const Initializer = () => {
           setPairs((pairs) =>
             pairs.map((p) => (p.pairId === pair.pairId ? pair : p)),
           );
+
+          // Create offer
+          if (userId === pair.senderId && !pair.offer) {
+            // New pair -> new p2p instance
+            const p2pInstance = new P2P();
+            p2pInstancesRef.current[pair.pairId] = p2pInstance;
+            setP2pChannels((p2pChannels) => {
+              const p2pChannelsCopy = { ...p2pChannels };
+              delete p2pChannelsCopy[pair.pairId];
+              return p2pChannelsCopy;
+            });
+            p2pInstance.channelPromise.then((channel) => {
+              setP2pChannels((p2pChannels) => ({
+                ...p2pChannels,
+                [pair.pairId]: channel,
+              }));
+              channel.onmessage = (event) => {
+                if (typeof event.data === 'string') {
+                  const message = JSON.parse(event.data) as P2pMessage;
+                  if (message.type === 'text') {
+                    setMessagesMap((messagesMap) => {
+                      const messages = messagesMap[pair.pairId] || [];
+                      return {
+                        ...messagesMap,
+                        [pair.pairId]: [...messages, message],
+                      };
+                    });
+                  } else {
+                    // meta
+                    filesMetaMapRef.current[pair.pairId] = {
+                      ...message,
+                      chunks: [],
+                    };
+                  }
+                } else if (event.data instanceof ArrayBuffer) {
+                  // arrayBuffer
+                  const meta = filesMetaMapRef.current[pair.pairId];
+                  if (!meta) return console.error('no meta');
+
+                  // Добавляем пришедшие данные
+                  meta.chunks.push(event.data);
+
+                  // Если собрали все чанки
+                  if (meta.chunks.length === meta.totalChunks) {
+                    const fullBuffer = concatenateBuffers(meta.chunks);
+                    const blob = new Blob([fullBuffer], {
+                      type: meta.mime,
+                    });
+                    const url = URL.createObjectURL(blob);
+
+                    setMessagesMap((messagesMap) => {
+                      const messages = messagesMap[pair.pairId] || [];
+                      return {
+                        ...messagesMap,
+                        [pair.pairId]: [
+                          ...messages,
+                          {
+                            type: 'image',
+                            name: meta.name,
+                            mime: meta.mime,
+                            url,
+                            size: meta.size
+                          },
+                        ],
+                      };
+                    });
+                  }
+                }
+              };
+              channel.onclose = () => {
+                alert('Connection closed');
+                delete p2pInstancesRef.current[pair.pairId];
+                delete p2pChannels[pair.pairId];
+              };
+            });
+
+            p2pInstance.createOffer().then((offer) => {
+              if (!offer) return console.error('offer not created');
+
+              Server.setOffer({
+                userId,
+                partnerId: pair.receiverId,
+                offer,
+              });
+            });
+          }
 
           const p2pInstance = p2pInstancesRef.current[pair.pairId];
 
@@ -189,26 +397,82 @@ export const Initializer = () => {
         });
       });
 
-      const exit = () => Server.exit(userId);
-      window.addEventListener('beforeunload', exit);
-      return () => {
-        window.removeEventListener('beforeunload', exit);
-      };
+      // const exit = () => Server.exit(userId);
+      // window.addEventListener('beforeunload', exit);
+      // return () => {
+      //   window.removeEventListener('beforeunload', exit);
+      // };
     }
   }, [userId]);
 
-  const sendMessage = useCallback(
-    (text: string) => {
-      p2pChannels[currentPairId]?.send(text);
-      setMessagesMap((messagesMap) => {
-        const messages = messagesMap[currentPairId] || [];
-        return {
-          ...messagesMap,
-          [currentPairId]: [...messages, { text, isOwner: true }],
+  const send = useCallback(
+    (data: string | File) => {
+      // Text
+      if (typeof data === 'string') {
+        p2pChannels[currentPairId]?.send(
+          JSON.stringify({ type: 'text', text: data }),
+        );
+
+        setMessagesMap((messagesMap) => {
+          const messages = messagesMap[currentPairId] || [];
+          return {
+            ...messagesMap,
+            [currentPairId]: [
+              ...messages,
+              { type: 'text', text: data, isOwner: true },
+            ],
+          };
+        });
+      }
+
+      // File
+      else {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const buffer = reader.result as ArrayBuffer;
+          const totalChunks = Math.ceil(buffer.byteLength / CHUNK_SIZE);
+
+          // 1. Отправляем метаданные (строку)
+          p2pChannels[currentPairId]?.send(
+            JSON.stringify({
+              type: 'meta',
+              name: data.name,
+              mime: data.type,
+              totalChunks: totalChunks,
+              size: data.size
+            } as P2pImageMessage)
+          );
+
+          // 2. Отправляем чанки (бинарные)
+          for (let i = 0; i < totalChunks; i++) {
+            const start = i * CHUNK_SIZE;
+            const end = Math.min(start + CHUNK_SIZE, buffer.byteLength);
+            const chunk = buffer.slice(start, end);
+            p2pChannels[currentPairId]?.send(chunk);
+          }
         };
-      });
+        reader.readAsArrayBuffer(data);
+
+        setMessagesMap((messagesMap) => {
+          const messages = messagesMap[currentPairId] || [];
+          return {
+            ...messagesMap,
+            [currentPairId]: [
+              ...messages,
+              {
+                type: 'image',
+                name: data.name,
+                mime: data.type,
+                url: URL.createObjectURL(data),
+                size: data.size,
+                isOwner: true,
+              },
+            ],
+          };
+        });
+      }
     },
-    [currentPairId],
+    [currentPairId, p2pChannels],
   );
 
   if (!userId) return <div>Loading...</div>;
@@ -248,7 +512,7 @@ export const Initializer = () => {
               }
               connected={pairsState[currentPairId] === 3}
               messages={messagesMap[currentPairId]}
-              send={sendMessage}
+              send={send}
             />
           ) : (
             <span>Select pair</span>
