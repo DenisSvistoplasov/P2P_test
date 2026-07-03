@@ -345,7 +345,7 @@ export const Initializer = () => {
               {pairsState[currentPairId] === 3 && (
                 <div>
                   {!localStream && !remoteStream && <button onClick={startVideoCall}>Start video call</button>}
-                  {remoteStream && !localStream && <button onClick={joinVideoCall}>Join video call</button>}
+                  {remoteStream && !localStream && <button onClick={joinVideoCall}>Join video call</button>} 
 
                   <div style={{ display: 'flex', gap: 20 }}>
                     {localStream && (
