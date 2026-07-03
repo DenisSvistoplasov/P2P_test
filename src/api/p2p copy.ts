@@ -1,5 +1,4 @@
-import { P2pConnectionData } from "./types";
-
+type P2pConnectionData = any;
 
 const iceServers = [
   // Google (5 серверов)
@@ -95,7 +94,7 @@ export class P2P {
 
     // 1. Загрузить данные А в свой PeerConnection
     await connection.setRemoteDescription(new RTCSessionDescription(offer.sdp));
-    offer.candidates.forEach((candidate) =>
+    offer.candidates.forEach((candidate: any) =>
       connection.addIceCandidate(new RTCIceCandidate(candidate)),
     );
 
@@ -137,7 +136,7 @@ export class P2P {
       await this.connection.setRemoteDescription(
         new RTCSessionDescription(answer.sdp),
       );
-      answer.candidates.forEach((candidate) =>
+      answer.candidates.forEach((candidate: any) =>
         this.connection?.addIceCandidate(new RTCIceCandidate(candidate)),
       );
     } else {

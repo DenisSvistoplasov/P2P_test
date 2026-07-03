@@ -1,14 +1,12 @@
-export type P2pConnectionData = {
-  sdp: RTCSessionDescriptionInit;
-  candidates: RTCIceCandidateInit[];
-};
+import { SignalData } from "@workadventure/simple-peer";
+
 
 export type Pair = {
   pairId: string;
   senderId: string;
   receiverId: string;
-  offer: P2pConnectionData | null;
-  answer: P2pConnectionData | null;
+  offer: SignalData | null;
+  answer: SignalData | null;
 };
 
 export type InitialResponse = {
@@ -27,11 +25,11 @@ export type ListenPairsResponse = PairChanges | 'no changes';
 export type SetOfferBody = {
   userId: string;
   partnerId: string;
-  offer: P2pConnectionData;
+  offer: SignalData;
 };
 
 export type SetAnswerBody = {
   userId: string;
   partnerId: string;
-  answer: P2pConnectionData;
+  answer: SignalData;
 };

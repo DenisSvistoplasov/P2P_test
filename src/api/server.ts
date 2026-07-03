@@ -1,7 +1,6 @@
 import {
   InitialResponse,
   ListenPairsResponse,
-  P2pConnectionData,
   PairChanges,
   SetAnswerBody,
   SetOfferBody,

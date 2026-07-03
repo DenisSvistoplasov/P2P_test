@@ -1,4 +1,4 @@
-import { P2pConnectionData } from "./types";
+type P2pConnectionData = any;
 
 const iceServers = [
   // Google (5 серверов)
@@ -72,7 +72,7 @@ export const P2P = {
 
     // 1. Загрузить данные А в свой PeerConnection
     await connection.setRemoteDescription(new RTCSessionDescription(offer.sdp));
-    offer.candidates.forEach((candidate) =>
+    offer.candidates.forEach((candidate: any) =>
       connection.addIceCandidate(new RTCIceCandidate(candidate)),
     );
 
@@ -114,36 +114,13 @@ export const P2P = {
       await this.connection.setRemoteDescription(
         new RTCSessionDescription(answer.sdp),
       );
-      answer.candidates.forEach((candidate) =>
+      answer.candidates.forEach((candidate: any) =>
         this.connection?.addIceCandidate(new RTCIceCandidate(candidate)),
       );
     } else {
       console.log('NO connection');
     }
   },
-
-  // onOpen(f: (channel: RTCDataChannel) => void) {
-  //   if (this.channel) {
-  //     const channel = this.channel;
-  //     this.channel.onopen = () => f(channel);
-  //   }
-  // },
-
-  // onMessage(f: (message: string) => void) {
-  //   if (this.connection) {
-  //     this.connection.ondatachannel = (event) => {
-  //       console.log('ondatachannel');
-
-  //       const channel = event.channel;
-  //       channel.onmessage = (message) => {
-  //         console.log('onmessage');
-  //         f(message.data);
-  //       };
-  //     };
-  //   } else {
-  //     console.log('NO connection2');
-  //   }
-  // },
 
   // for recipient
   async getChannel() {

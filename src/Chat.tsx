@@ -21,8 +21,9 @@ export const Chat: FC<{
   interlocutorId: string;
   connected: boolean;
   messages: Message[];
-  send: (message: string | File) => void;
-}> = ({ interlocutorId, connected, messages, send }) => {
+  sendText: (message: string) => void;
+  sendFile: (message:  File) => void;
+}> = ({ interlocutorId, connected, messages, sendText, sendFile }) => {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [text, setText] = useState<string>('');
 
@@ -34,14 +35,14 @@ export const Chat: FC<{
   const sendImage = () => {
     if (!selectedFile) return;
 
-    send(selectedFile);
+    sendFile(selectedFile);
     setSelectedFile(null);
   };
 
   const onClick = () => {
     const trimmedText = text.trim();
     if (!trimmedText) return;
-    send(trimmedText);
+    sendText(trimmedText);
     setText('');
   };
 

@@ -82,9 +82,7 @@ export default function App() {
   // };
 
   return (
-    <Initializer/>
-    // <div className="App" style={{ textAlign: 'center' }}>
-    //   <input
+    <Initializer />
     //     style={{ marginBottom: 10 }}
     //     type="text"
     //     value={value}

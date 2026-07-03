@@ -4,6 +4,9 @@ on:
   push:
     branches: [ "main" ]   # или "master", смотря что у вас
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 # Даём разрешение на деплой
 permissions:
   contents: read
