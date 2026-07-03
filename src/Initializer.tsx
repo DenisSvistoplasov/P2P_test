@@ -344,8 +344,32 @@ export const Initializer = () => {
               />
               {pairsState[currentPairId] === 3 && (
                 <div>
-                  {!localStream && !remoteStream && <button onClick={startVideoCall}>Start video call</button>}
-                  {remoteStream && !localStream && <button onClick={joinVideoCall}>Join video call</button>} 
+                  <div style={{ display: 'flex', gap: 10, marginBottom: 10 }}>
+                    {!localStream && !remoteStream && (
+                      <button
+                        onClick={startVideoCall}
+                        style={{
+                          padding: '10px 20px',
+                          fontSize: 16,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        Start video call
+                      </button>
+                    )}
+                    {remoteStream && !localStream && (
+                      <button
+                        onClick={joinVideoCall}
+                        style={{
+                          padding: '10px 20px',
+                          fontSize: 16,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        Join video call
+                      </button>
+                    )}
+                  </div>
 
                   <div style={{ display: 'flex', gap: 20 }}>
                     {localStream && (
