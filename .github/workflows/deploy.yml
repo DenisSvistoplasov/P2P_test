@@ -2,10 +2,7 @@ name: Build and Deploy to GitHub Pages
 
 on:
   push:
-    branches: [ "main" ]   # или "master", смотря что у вас
-
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    branches: [ "main" ]
 
 # Даём разрешение на деплой
 permissions:
@@ -23,12 +20,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5 # Обновлено с v4 на v5
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5 # Обновлено с v4 на v5
         with:
-          node-version: '20'
+          node-version: '20' # Твой проект внутри по-прежнему собирается на Node 20, это ок
           cache: 'npm'
 
       - name: Install dependencies
@@ -38,16 +35,12 @@ jobs:
         run: npm run build
 
       - name: Setup Pages
-        uses: actions/configure-pages@v4
+        uses: actions/configure-pages@v5 # Обновлено с v4 на v5
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          # ВАЖНО: укажите правильную папку!
-          # Если сборка идёт в dist → path: './dist'
-          # Если в build → path: './build'
-          # Если в docs → path: './docs'
-          path: './build'   # ← ИЗМЕНИТЕ ЭТО на вашу папку
+          path: './build'
 
   deploy:
     environment:
