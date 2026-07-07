@@ -6,31 +6,17 @@ import {
   useRef,
   useState,
 } from 'react';
-import { Server } from './api/server';
-import { Pair } from './api/types';
-import { P2P } from './api/p2p copy';
+import { Pair, SetAnswerBody, SetOfferBody } from './api/types';
 import { Chat, Message } from './Chat';
-import { concatenateBuffers } from './utils';
 import { P2pSession } from './api/simplePeer';
 import { VideoPlayer } from './api/VideoPlayer';
-
-export type P2pTextMessage = {
-  type: 'text';
-  text: string;
-};
-export type P2pImageMessage = {
-  type: 'meta';
-  name: string;
-  mime: string;
-  totalChunks: number;
-  size: number; // bytes
-};
-export type P2pMessage = P2pTextMessage | P2pImageMessage;
+import { P2pWsClient } from './server/p2p_ws';
+import { WsStatus } from './server/webSocket';
 
 type PairState = 0 | 1 | 2 | 3;
 
 export const Initializer = () => {
-  const isInitializedRef = useRef(false);
+  const [wsStatus, setWsStatus] = useState<WsStatus>('disconnected');
   const [userId, setUserId] = useState<string>('');
   const [pairs, setPairs] = useState<Pair[]>([]);
   const [p2pChannels, setP2pChannels] = useState<Record<string, boolean>>({});
@@ -39,9 +25,9 @@ export const Initializer = () => {
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
 
+  const userIdRef = useRef(userId);
+  const wsRef = useRef<P2pWsClient | null>(null);
   const p2pInstancesRef = useRef<Record<string, P2pSession>>({});
-
-  console.log('messagesMap: ', messagesMap);
 
   const pairIds = useMemo(() => pairs.map((pair) => pair.pairId), [pairs]);
 
@@ -61,141 +47,136 @@ export const Initializer = () => {
     window.pairs = pairs;
   }, [pairs]);
 
-  // Initial
   useEffect(() => {
-    if (isInitializedRef.current) return;
+    userIdRef.current = userId;
+  }, [userId]);
 
-    isInitializedRef.current = true;
+  useEffect(() => {
+    const ws = new P2pWsClient();
+
+    const setOffer = (data: SetOfferBody) =>
+      ws.send({ type: 'setOffer', payload: data });
+    const setAnswer = (data: SetAnswerBody) =>
+      ws.send({ type: 'setAnswer', payload: data });
+
+    ws.onMessage((message) => {
+      console.log('Got message: ', message.type);
+
+      if (message.type === 'initial') {
+        const { yourId, pairs } = message.payload;
+        localStorage.setItem('userId', yourId);
+        console.log('Set yourId: ', yourId);
+        userIdRef.current = yourId;
+        setUserId(yourId);
+        setPairs(pairs);
+
+        pairs.forEach((pair) => {
+          console.log('yourId: ', yourId);
+          initiateP2P({
+            p2pInstancesRef,
+            pair,
+            userId: yourId,
+            setOffer,
+            setAnswer,
+            setP2pChannels,
+            setMessagesMap,
+            setRemoteStream,
+          });
+        });
+      } else {
+        console.log('userIdRef.current: ', userIdRef.current);
+      }
+
+      if (message.type === 'putPair') {
+        const pair = message.payload;
+        setPairs((pairs) => {
+          const newPairs = [...pairs];
+          const existedIndex = newPairs.findIndex((p) => p.pairId === pair.pairId);
+          if (existedIndex !== -1) {
+            newPairs[existedIndex] = pair;
+          } else {
+            newPairs.push(pair);
+          }
+          return newPairs;
+        });
+        initiateP2P({
+          pair,
+          userId: userIdRef.current,
+          setOffer,
+          setAnswer,
+          p2pInstancesRef,
+          setMessagesMap,
+          setP2pChannels,
+          setRemoteStream,
+        });
+      }
+
+      if (message.type === 'setOffer') {
+        const { pairId, offer } = message.payload;
+        const p2pInstance = p2pInstancesRef.current[pairId];
+        if (!p2pInstance) {
+          return console.error('There is no instance on get Offer!!!');
+        }
+        console.log('got Offer: ', message.payload);
+        setPairs((pairs) =>
+          pairs.map((pair) =>
+            pair.pairId === pairId ? { ...pair, offer } : pair,
+          ),
+        );
+        const [senderId, receiverId] = pairId.split('_vs_');
+        if (userIdRef.current === receiverId) {
+          p2pInstance.applySignal(offer);
+        }
+      }
+
+      if (message.type === 'setAnswer') {
+        const { pairId, answer } = message.payload;
+        const p2pInstance = p2pInstancesRef.current[pairId];
+        if (!p2pInstance) {
+          return console.error('There is no instance on get Answer!!!');
+        }
+        console.log('got Answer: ', message.payload);
+        setPairs((pairs) =>
+          pairs.map((pair) =>
+            pair.pairId === pairId ? { ...pair, answer } : pair,
+          ),
+        );
+        const [senderId, receiverId] = pairId.split('_vs_');
+        if (userIdRef.current === senderId) {
+          p2pInstance.applySignal(answer);
+        }
+      }
+
+      if (message.type === 'deletePair') {
+        const pairId = message.payload;
+        setPairs((pairs) => pairs.filter((pair) => pair.pairId !== pairId));
+        const p2pInstance = p2pInstancesRef.current[pairId];
+
+        if (!p2pInstance)
+          return console.error(
+            'p2pInstance not found for removed pair',
+            pairId,
+          );
+
+        p2pInstance.destroy();
+        delete p2pInstancesRef.current[pairId];
+
+        setP2pChannels((prev) => {
+          const next = { ...prev };
+          delete next[pairId];
+          return next;
+        });
+      }
+    });
+
+    ws.onStatus(setWsStatus);
+    wsRef.current = ws;
 
     const localUserId = localStorage.getItem('userId') || generateUserId();
+    ws.send({ type: 'initial', payload: { userId: localUserId } });
 
-    Server.getInitial(localUserId).then((data) => {
-      const userId = data.yourId;
-      setUserId(userId);
-      localStorage.setItem('userId', data.yourId);
-
-      setPairs(data.pairs);
-
-      data.pairs.forEach((pair) => {
-        console.log('initial initiateP2P');
-        initiateP2P({
-          p2pInstancesRef,
-          pair,
-          userId,
-          setP2pChannels,
-          setMessagesMap,
-          setRemoteStream,
-          setLocalStream,
-        });
-      });
-    });
+    return () => ws.disconnect();
   }, []);
-
-  // Listening
-  useEffect(() => {
-    if (userId) {
-      Server.listenPairs(userId, (pairChanges) => {
-        // ADDED
-        pairChanges.added?.forEach((pair) => {
-          setPairs((pairs) => [...pairs, pair]);
-
-          // New pair -> new p2p instance
-          console.log('initiateP2P on added');
-          initiateP2P({
-            pair,
-            userId,
-            p2pInstancesRef,
-            setMessagesMap,
-            setP2pChannels,
-            setRemoteStream,
-            setLocalStream,
-          });
-        });
-
-        pairChanges.modified?.forEach((modifiedPair) => {
-          setPairs((pairs) => {
-            let doesExist = false;
-            const newPairs = pairs.map((p) => {
-              if (p.pairId === modifiedPair.pairId) {
-                doesExist = true;
-                return modifiedPair;
-              }
-              return p;
-            });
-            if (!doesExist) newPairs.push(modifiedPair);
-            return newPairs;
-          });
-
-          // Create offer
-          if (userId === modifiedPair.senderId && !modifiedPair.offer) {
-            console.log('Triggering createOffer');
-            initiateP2P({
-              pair: modifiedPair,
-              userId,
-              p2pInstancesRef,
-              setMessagesMap,
-              setP2pChannels,
-              setRemoteStream,
-              setLocalStream,
-            });
-          }
-
-          if (!p2pInstancesRef.current[modifiedPair.pairId]) {
-            console.warn('There is no instance on modified!!!');
-          }
-
-          const p2pInstance =
-            p2pInstancesRef.current[modifiedPair.pairId] ||
-            (console.log('initiateP2P !!!'),
-            initiateP2P({
-              pair: modifiedPair,
-              userId,
-              p2pInstancesRef,
-              setMessagesMap,
-              setP2pChannels,
-              setRemoteStream,
-              setLocalStream,
-            }));
-
-          // Create answer
-          if (
-            userId === modifiedPair.receiverId &&
-            modifiedPair.offer &&
-            !modifiedPair.answer
-          ) {
-            console.log('Triggering createAnswer');
-            p2pInstance.applySignal(modifiedPair.offer);
-          }
-
-          // Apply answer
-          if (userId === modifiedPair.senderId && modifiedPair.answer) {
-            p2pInstance.applySignal(modifiedPair.answer);
-          }
-        });
-
-        pairChanges.removed?.forEach((pairId) => {
-          setPairs((pairs) => pairs.filter((p) => p.pairId !== pairId));
-
-          const p2pInstance = p2pInstancesRef.current[pairId];
-
-          if (!p2pInstance)
-            return console.error(
-              'p2pInstance not found for removed pair',
-              pairId,
-            );
-
-          p2pInstance.destroy();
-          delete p2pInstancesRef.current[pairId];
-
-          setP2pChannels((prev) => {
-            const next = { ...prev };
-            delete next[pairId];
-            return next;
-          });
-        });
-      });
-    }
-  }, [userId]);
 
   const sendText = useCallback(
     (text: string) => {
@@ -224,10 +205,8 @@ export const Initializer = () => {
       if (!session)
         return console.error('Сессия не найдена для', currentPairId);
 
-      // Передаем файл целиком, P2pSession сам разберется с нарезкой
       session.sendImage(file);
 
-      // Сразу отображаем картинку у себя, используя локальный URL
       setMessagesMap((messagesMap) => {
         const messages = messagesMap[currentPairId] || [];
         return {
@@ -271,7 +250,6 @@ export const Initializer = () => {
     }
   }, [currentPairId]);
 
-  // B-side: Join incoming video call
   const joinVideoCall = useCallback(async () => {
     const session = p2pInstancesRef.current[currentPairId];
     if (!session)
@@ -295,106 +273,113 @@ export const Initializer = () => {
     }
   }, [currentPairId]);
 
-  if (!userId) return <div>Loading...</div>;
-
   return (
     <div>
-      <h1>Current user: {userId}</h1>
+      <div>WebSocket status: {wsStatus}</div>
 
-      <div style={{ display: 'flex', gap: 50 }}>
-        <div>
-          <h2>Users</h2>
-          {pairIds.length > 0 ? (
-            <ul style={{ listStyle: 'none', width: 200 }}>
-              {pairIds.map((pairId) => (
-                <li key={pairId}>
-                  <button
-                    onClick={() => setCurrentPairId(pairId)}
-                    style={{
-                      backgroundColor: ['#ccc', '#cc6', '#5df', '#6f7'][
-                        pairsState[pairId]
-                      ],
-                      cursor: 'pointer',
-                    }}
-                  >
-                    {pairId + ' State: ' + pairsState[pairId]}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          ) : isInitializedRef.current ? (
-            <span>No users</span>
-          ) : (
-            <span>Loading...</span>
-          )}
-        </div>
-
-        <div>
-          <h2>Chat</h2>
-          {currentPairId ? (
+      {!userId ? (
+        <div>Loading...</div>
+      ) : (
+        <>
+          <h1>Current user: {userId}</h1>
+          <div style={{ display: 'flex', gap: 50 }}>
             <div>
-              <Chat
-                interlocutorId={
-                  currentPairId.split('_vs_').find((id) => id != userId)!
-                }
-                connected={pairsState[currentPairId] === 3}
-                messages={messagesMap[currentPairId]}
-                sendText={sendText}
-                sendFile={sendFile}
-              />
-              {pairsState[currentPairId] === 3 && (
-                <div>
-                  <div style={{ display: 'flex', gap: 10, marginBottom: 10 }}>
-                    {!localStream && !remoteStream && (
+              <h2>Users</h2>
+              {pairIds.length > 0 ? (
+                <ul style={{ listStyle: 'none', width: 200 }}>
+                  {pairIds.map((pairId) => (
+                    <li key={pairId}>
                       <button
-                        onClick={startVideoCall}
+                        onClick={() => setCurrentPairId(pairId)}
                         style={{
-                          padding: '10px 20px',
-                          fontSize: 16,
+                          backgroundColor: ['#ccc', '#cc6', '#5df', '#6f7'][
+                            pairsState[pairId]
+                          ],
                           cursor: 'pointer',
                         }}
                       >
-                        Start video call
+                        {pairId + ' State: ' + pairsState[pairId]}
                       </button>
-                    )}
-                    {remoteStream && !localStream && (
-                      <button
-                        onClick={joinVideoCall}
-                        style={{
-                          padding: '10px 20px',
-                          fontSize: 16,
-                          cursor: 'pointer',
-                        }}
-                      >
-                        Join video call
-                      </button>
-                    )}
-                  </div>
-
-                  <div style={{ display: 'flex', gap: 20 }}>
-                    {localStream && (
-                      <div>
-                        <p style={{ margin: '0 0 5px 0', fontSize: 14 }}>Вы</p>
-                        <VideoPlayer stream={localStream} muted />
-                      </div>
-                    )}
-                    {remoteStream && (
-                      <div>
-                        <p style={{ margin: '0 0 5px 0', fontSize: 14 }}>
-                          Собеседник
-                        </p>
-                        <VideoPlayer stream={remoteStream} />
-                      </div>
-                    )}
-                  </div>
-                </div>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <span>No users</span>
               )}
             </div>
-          ) : (
-            pairIds.length > 0 && <span>Select pair</span>
-          )}
-        </div>
-      </div>
+
+            <div>
+              <h2>Chat</h2>
+              {currentPairId ? (
+                <div>
+                  <Chat
+                    interlocutorId={
+                      currentPairId.split('_vs_').find((id) => id != userId)!
+                    }
+                    connected={pairsState[currentPairId] === 3}
+                    messages={messagesMap[currentPairId]}
+                    sendText={sendText}
+                    sendFile={sendFile}
+                  />
+                  {pairsState[currentPairId] === 3 && (
+                    <div>
+                      <div
+                        style={{ display: 'flex', gap: 10, marginBottom: 10 }}
+                      >
+                        {!localStream && !remoteStream && (
+                          <button
+                            onClick={startVideoCall}
+                            style={{
+                              padding: '10px 20px',
+                              fontSize: 16,
+                              cursor: 'pointer',
+                            }}
+                          >
+                            Start video call
+                          </button>
+                        )}
+                        {remoteStream && !localStream && (
+                          <button
+                            onClick={joinVideoCall}
+                            style={{
+                              padding: '10px 20px',
+                              fontSize: 16,
+                              cursor: 'pointer',
+                            }}
+                          >
+                            Join video call
+                          </button>
+                        )}
+                      </div>
+
+                      <div style={{ display: 'flex', gap: 20 }}>
+                        {localStream && (
+                          <div>
+                            <p style={{ margin: '0 0 5px 0', fontSize: 14 }}>
+                              Вы
+                            </p>
+                            <VideoPlayer stream={localStream} muted />
+                          </div>
+                        )}
+                        {remoteStream && (
+                          <div>
+                            <p style={{ margin: '0 0 5px 0', fontSize: 14 }}>
+                              Собеседник
+                            </p>
+                            <VideoPlayer stream={remoteStream} />
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                pairIds.length > 0 && <span>Select pair</span>
+              )}
+            </div>
+          </div>{' '}
+        </>
+      )}
     </div>
   );
 };
@@ -411,23 +396,28 @@ function initiateP2P({
   pair,
   userId,
   p2pInstancesRef,
+  setOffer,
+  setAnswer,
   setP2pChannels,
   setMessagesMap,
   setRemoteStream,
-  setLocalStream,
 }: {
   pair: Pair;
   userId: string;
   p2pInstancesRef: React.MutableRefObject<Record<string, P2pSession>>;
+  setOffer: (data: SetOfferBody) => void;
+  setAnswer: (data: SetAnswerBody) => void;
   setP2pChannels: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
   setMessagesMap: React.Dispatch<
     React.SetStateAction<Record<string, Message[]>>
   >;
   setRemoteStream: React.Dispatch<React.SetStateAction<MediaStream | null>>;
-  setLocalStream: React.Dispatch<React.SetStateAction<MediaStream | null>>;
 }) {
   const pairId = pair.pairId;
   const isInitiator = userId === pair.senderId;
+  console.log('userId: ', userId);
+  console.log('pair.senderId: ', pair.senderId);
+  console.log('InitiateP2P. initiator:', isInitiator);
 
   // 1. Создаем сессию. Передаем флаг инициатора.
   const p2pInstance = new P2pSession({
@@ -438,14 +428,14 @@ function initiateP2P({
       console.log('signalData: ', signalData);
       console.log('isInitiator: ', isInitiator);
       if (isInitiator) {
-        Server.setOffer({
+        setOffer({
           userId,
           partnerId: pair.receiverId,
           offer: signalData,
         });
       }
       if (!isInitiator) {
-        Server.setAnswer({
+        setAnswer({
           userId,
           partnerId: pair.senderId,
           answer: signalData,

@@ -1,5 +1,4 @@
-import { FC, useRef, useState } from 'react';
-import { P2pMessage } from './Initializer';
+import { FC, useState } from 'react';
 
 export type TextMessage = {
   type: 'text';
