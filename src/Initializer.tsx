@@ -14,6 +14,7 @@ import { P2pWsClient } from './server/p2p_ws';
 import { WsStatus } from './server/webSocket';
 
 type PairState = 0 | 1 | 2 | 3;
+type VideoCallStatus = 'off' | 'incoming' | 'outgoing' | 'on';
 
 export const Initializer = () => {
   const [wsStatus, setWsStatus] = useState<WsStatus>('disconnected');
@@ -24,6 +25,8 @@ export const Initializer = () => {
   const [messagesMap, setMessagesMap] = useState<Record<string, Message[]>>({}); // pairId : Message[]
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
+  const [videoCallStatus, setVideoCallStatus] =
+    useState<VideoCallStatus>('off');
 
   const userIdRef = useRef(userId);
   const wsRef = useRef<P2pWsClient | null>(null);
@@ -41,11 +44,6 @@ export const Initializer = () => {
     });
     return map;
   }, [pairs, p2pChannels]);
-
-  useEffect(() => {
-    // @ts-ignore
-    window.pairs = pairs;
-  }, [pairs]);
 
   useEffect(() => {
     userIdRef.current = userId;
@@ -81,6 +79,8 @@ export const Initializer = () => {
             setP2pChannels,
             setMessagesMap,
             setRemoteStream,
+            setLocalStream,
+            setVideoCallStatus,
           });
         });
       } else {
@@ -91,7 +91,9 @@ export const Initializer = () => {
         const pair = message.payload;
         setPairs((pairs) => {
           const newPairs = [...pairs];
-          const existedIndex = newPairs.findIndex((p) => p.pairId === pair.pairId);
+          const existedIndex = newPairs.findIndex(
+            (p) => p.pairId === pair.pairId,
+          );
           if (existedIndex !== -1) {
             newPairs[existedIndex] = pair;
           } else {
@@ -108,6 +110,8 @@ export const Initializer = () => {
           setMessagesMap,
           setP2pChannels,
           setRemoteStream,
+          setLocalStream,
+          setVideoCallStatus,
         });
       }
 
@@ -228,50 +232,32 @@ export const Initializer = () => {
     [currentPairId],
   );
 
-  const startVideoCall = useCallback(async () => {
-    const session = p2pInstancesRef.current[currentPairId];
-    if (!session) return console.error('Сессия не найдена для звонка');
-
-    try {
-      // 1. Запрашиваем доступ к камере и микрофону в браузере
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: true,
-        audio: true,
-      });
-
-      // 2. Сохраняем свой поток в стейт, чтобы видеть себя на экране
-      setLocalStream(stream);
-
-      // 3. Добавляем поток в P2P-сессию.
-      // Это автоматически занулит answer на сервере и запустит пересогласование!
-      session.addCameraStream(stream);
-    } catch (err) {
-      console.error('Ошибка доступа к камере или микрофону:', err);
-    }
-  }, [currentPairId]);
-
   const joinVideoCall = useCallback(async () => {
     const session = p2pInstancesRef.current[currentPairId];
-    if (!session)
-      return console.error('Сессия не найдена для присоединения к звонку');
 
-    try {
-      // 1. Запрашиваем доступ к камере и микрофону
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: true,
-        audio: true,
-      });
+    if (!session) return console.error('Сессия не найдена для звонка');
 
-      // 2. Сохраняем свой поток в стейт
+    session.addCameraStream().then((stream) => {
+      if (!stream) return console.error('Поток не нашелся');
+
       setLocalStream(stream);
-
-      // 3. Добавляем поток в P2P-сессию - это запустит ренеготиацию
-      // и отправит новый answer на сервер
-      session.addCameraStream(stream);
-    } catch (err) {
-      console.error('Ошибка доступа к камере или микрофону:', err);
-    }
+      setVideoCallStatus((status) =>
+        status === 'off' ? 'outgoing' : status === 'incoming' ? 'on' : status,
+      );
+    });
   }, [currentPairId]);
+
+  const endVideoCall = useCallback(() => {
+    const p2pInstance = p2pInstancesRef.current[currentPairId];
+    if (!p2pInstance) {
+      return console.error('Сессия не найдена для разрыва звонка');
+    }
+    if (!localStream) {
+      return console.error('При завершении звонка поток не нашелся');
+    }
+
+    p2pInstance.endVideoCall();
+  }, [localStream, currentPairId]);
 
   return (
     <div>
@@ -328,14 +314,14 @@ export const Initializer = () => {
                       >
                         {!localStream && !remoteStream && (
                           <button
-                            onClick={startVideoCall}
+                            onClick={joinVideoCall}
                             style={{
                               padding: '10px 20px',
                               fontSize: 16,
                               cursor: 'pointer',
                             }}
                           >
-                            Start video call
+                            Позвонить
                           </button>
                         )}
                         {remoteStream && !localStream && (
@@ -347,9 +333,23 @@ export const Initializer = () => {
                               cursor: 'pointer',
                             }}
                           >
-                            Join video call
+                            Присоединиться к звонку
                           </button>
                         )}
+                        {(videoCallStatus === 'on' ||
+                          videoCallStatus === 'outgoing') && (
+                          <button
+                            onClick={endVideoCall}
+                            style={{
+                              padding: '10px 20px',
+                              fontSize: 16,
+                              cursor: 'pointer',
+                            }}
+                          >
+                            Завершить звонок
+                          </button>
+                        )}
+                        <span>Video call status: {videoCallStatus}</span>
                       </div>
 
                       <div style={{ display: 'flex', gap: 20 }}>
@@ -401,6 +401,8 @@ function initiateP2P({
   setP2pChannels,
   setMessagesMap,
   setRemoteStream,
+  setLocalStream,
+  setVideoCallStatus,
 }: {
   pair: Pair;
   userId: string;
@@ -412,6 +414,8 @@ function initiateP2P({
     React.SetStateAction<Record<string, Message[]>>
   >;
   setRemoteStream: React.Dispatch<React.SetStateAction<MediaStream | null>>;
+  setLocalStream: React.Dispatch<React.SetStateAction<MediaStream | null>>;
+  setVideoCallStatus: React.Dispatch<React.SetStateAction<VideoCallStatus>>;
 }) {
   const pairId = pair.pairId;
   const isInitiator = userId === pair.senderId;
@@ -477,7 +481,24 @@ function initiateP2P({
     },
 
     onIncomingStream: (remoteStream) => {
+      setVideoCallStatus((videoCallStatus) => {
+        console.log('onIncomingStream. videoCallStatus: ', videoCallStatus);
+        if (videoCallStatus === 'off') {
+          return 'incoming';
+        }
+        if (videoCallStatus === 'outgoing') {
+          return 'on';
+        }
+        return videoCallStatus;
+      });
+
       setRemoteStream(remoteStream);
+    },
+
+    onEndVideoCall: () => {
+      setLocalStream(null);
+      setRemoteStream(null);
+      setVideoCallStatus('off');
     },
   });
 
@@ -492,3 +513,5 @@ function initiateP2P({
 
   return p2pInstance;
 }
+
+// TODO: work around statuses (videoCallStatus, p2pChannels)

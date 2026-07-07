@@ -22,7 +22,8 @@ const iceServers = [
 
 export type P2pMessage =
   | { type: 'text'; text: string }
-  | { type: 'meta'; name: string; mime: string; size: number };
+  | { type: 'meta'; name: string; mime: string; size: number }
+  | { type: 'endVideoCall' };
 
 interface P2pSessionConfig {
   initiator: boolean;
@@ -36,6 +37,7 @@ interface P2pSessionConfig {
     size: number,
   ) => void;
   onIncomingStream: (remoteStream: MediaStream) => void;
+  onEndVideoCall: () => void;
 }
 
 export class P2pSession {
@@ -46,6 +48,8 @@ export class P2pSession {
     size: number;
     chunks: Uint8Array[];
   } | null = null;
+  private stream: MediaStream | null = null;
+  private onEndVideoCall: (() => void) | null = null;
 
   constructor(config: P2pSessionConfig) {
     // 1. Создаем внутренний пир
@@ -54,6 +58,8 @@ export class P2pSession {
       trickle: false,
       config: { iceServers },
     });
+
+    this.onEndVideoCall = config.onEndVideoCall;
 
     // 2. Инкапсулируем системные события
     this.peer.on('signal', (data) => {
@@ -82,9 +88,13 @@ export class P2pSession {
 
         if (parsed.type === 'text') {
           config.onTextMessage(parsed.text);
-        } else if (parsed.type === 'meta') {
+        }
+        if (parsed.type === 'meta') {
           // Запоминаем, что сейчас полетит картинка
           this.fileMeta = { ...parsed, chunks: [] };
+        }
+        if (parsed.type === 'endVideoCall') {
+          this.endVideoCall();
         }
       } catch (e) {
         // Если упало — значит прилетели бинарные данные (кусок картинки)
@@ -187,8 +197,37 @@ export class P2pSession {
   }
 
   /** Включить камеру */
-  public addCameraStream(stream: MediaStream) {
-    this.peer.addStream(stream);
+  public async addCameraStream() {
+    try {
+      // 1. Запрашиваем доступ к камере и микрофону
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: true,
+        audio: true,
+      });
+
+      // 2. Добавляем поток в P2P-сессию - это запустит ренеготиацию
+      // и отправит новый answer на сервер
+      this.peer.addStream(stream);
+
+      this.stream = stream;
+      // 3. Сохраняем свой поток в стейт
+      return stream;
+    } catch (err) {
+      console.error('Ошибка доступа к камере или микрофону:', err);
+    }
+  }
+
+  /** Отключить камеру */
+  public endVideoCall(isInitiator = true) {
+    console.log('endVideoCall. isInitiator: ', isInitiator);
+    if (!this.stream)
+      return console.error('endVideoCall. Нет потока для закрытия!');
+
+    if (isInitiator) this.peer.send(JSON.stringify({ type: 'endVideoCall' }));
+    this.peer.removeStream(this.stream);
+    this.stream.getTracks().forEach((track) => track.stop());
+    this.stream = null;
+    this.onEndVideoCall?.();
   }
 
   /** Закрыть соединение и очистить память */
