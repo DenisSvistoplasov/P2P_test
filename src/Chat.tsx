@@ -1,4 +1,5 @@
 import { FC, useState } from 'react';
+import { formateTimeDuration } from './utils';
 
 export type TextMessage = {
   type: 'text';
@@ -13,8 +14,14 @@ export type ImageMessage = {
   size: number; // bytes
   isOwner?: boolean;
 };
+export type CallInfoMessage = {
+  type: 'callInfo';
+  start: boolean;
+  timestamp: number; // ms
+  duration?: number; // ms
+};
 
-export type Message = TextMessage | ImageMessage;
+export type Message = TextMessage | ImageMessage | CallInfoMessage;
 
 export const Chat: FC<{
   interlocutorId: string;
@@ -40,17 +47,17 @@ export const Chat: FC<{
   };
 
   return (
-    <div>
+    <div style={{marginBottom: 10}}>
       <div>Chat with user: {interlocutorId}</div>
 
-      {connected ? (
+      {messages.length > 0 && (
         <ul
           style={{
             listStyle: 'none',
             display: 'flex',
             flexDirection: 'column',
             gap: 5,
-            padding: 0,
+            padding: 4,
             border: '1px solid',
           }}
         >
@@ -58,14 +65,26 @@ export const Chat: FC<{
             <li
               key={i}
               style={{
-                alignSelf: message.isOwner ? 'flex-end' : 'flex-start',
+                alignSelf:
+                  message.type === 'callInfo'
+                    ? 'center'
+                    : message.isOwner
+                      ? 'flex-end'
+                      : 'flex-start',
                 maxWidth: '60%',
-                backgroundColor: message.isOwner ? 'lightgreen' : 'lightblue',
+                backgroundColor:
+                  message.type === 'callInfo'
+                    ? 'lightgray'
+                    : message.isOwner
+                      ? 'lightgreen'
+                      : 'lightblue',
+                borderRadius: message.type === 'text' ? (message.isOwner ? '7px 7px 0 7px' : '0 7px 7px 7px') : '5px',
+                padding: '2px 8px',
               }}
             >
               {message.type === 'text' ? (
-                <span>{message.text}</span>
-              ) : (
+                <span style={{fontFamily: 'sans-serif'}}>{message.text}</span>
+              ) : message.type === 'image' ? (
                 <div>
                   {' '}
                   <img
@@ -74,12 +93,22 @@ export const Chat: FC<{
                   />{' '}
                   {message.name}, size: {formateFileSize(message.size)}
                 </div>
+              ) : (
+                <span>
+                  {message.start ? 'Call started' : 'Call ended'} at{' '}
+                  {new Date(message.timestamp).toLocaleTimeString([], {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  })}
+                  .
+                  {message.duration && (
+                    <> Duration:&nbsp;{formateTimeDuration(message.duration)}</>
+                  )}
+                </span>
               )}
             </li>
           ))}
         </ul>
-      ) : (
-        <div>Not connected yet</div>
       )}
 
       <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>

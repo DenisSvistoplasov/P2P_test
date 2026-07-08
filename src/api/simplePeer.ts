@@ -28,7 +28,7 @@ export type P2pMessage =
 interface P2pSessionConfig {
   initiator: boolean;
   onSignal: (data: SignalData) => void;
-  onStatusChange?: (isConnected: boolean) => void;
+  onStatusChange: (isConnected: boolean) => void;
   onTextMessage: (text: string) => void;
   onImageMessage: (
     url: string,
@@ -48,7 +48,7 @@ export class P2pSession {
     size: number;
     chunks: Uint8Array[];
   } | null = null;
-  private stream: MediaStream | null = null;
+  private localStream: MediaStream | null = null;
   private onEndVideoCall: (() => void) | null = null;
 
   constructor(config: P2pSessionConfig) {
@@ -67,16 +67,17 @@ export class P2pSession {
     });
 
     this.peer.on('connect', () => {
-      config.onStatusChange?.(true); // Соединение установлено (Статус 3)
+      config.onStatusChange(true); // Соединение установлено (Статус 3)
+      console.log('p2p connected');
     });
 
     this.peer.on('close', () => {
-      config.onStatusChange?.(false); // Соединение упало
+      config.onStatusChange(false); // Соединение упало
     });
 
     this.peer.on('error', (err) => {
       console.error('P2P Error:', err);
-      config.onStatusChange?.(false);
+      config.onStatusChange(false);
     });
 
     // 3. Инкапсулируем всю сложную логику разбора чанков и картинок!
@@ -94,7 +95,7 @@ export class P2pSession {
           this.fileMeta = { ...parsed, chunks: [] };
         }
         if (parsed.type === 'endVideoCall') {
-          this.endVideoCall();
+          this.endVideoCall(false);
         }
       } catch (e) {
         // Если упало — значит прилетели бинарные данные (кусок картинки)
@@ -131,22 +132,8 @@ export class P2pSession {
 
     // 4. Входящий медиа поток
     this.peer.on('stream', async (remoteStream: MediaStream) => {
-      // try {
-      // 1. Запрашиваем доступ к камере и микрофону в браузере
-      // const localStream = await navigator.mediaDevices.getUserMedia({
-      //   video: true,
-      //   audio: true,
-      // });
-
-      // 2. Передаем потоки наружу в React
       console.log('On stream', remoteStream);
       config.onIncomingStream(remoteStream);
-
-      // 3. Добавляем поток в P2P-сессию.
-      //   this.addCameraStream(localStream);
-      // } catch (err) {
-      //   console.error('Ошибка доступа к камере или микрофону:', err);
-      // }
     });
   }
 
@@ -209,7 +196,7 @@ export class P2pSession {
       // и отправит новый answer на сервер
       this.peer.addStream(stream);
 
-      this.stream = stream;
+      this.localStream = stream;
       // 3. Сохраняем свой поток в стейт
       return stream;
     } catch (err) {
@@ -220,13 +207,13 @@ export class P2pSession {
   /** Отключить камеру */
   public endVideoCall(isInitiator = true) {
     console.log('endVideoCall. isInitiator: ', isInitiator);
-    if (!this.stream)
-      return console.error('endVideoCall. Нет потока для закрытия!');
 
     if (isInitiator) this.peer.send(JSON.stringify({ type: 'endVideoCall' }));
-    this.peer.removeStream(this.stream);
-    this.stream.getTracks().forEach((track) => track.stop());
-    this.stream = null;
+    if (this.localStream) {
+      this.peer.removeStream(this.localStream);
+      this.localStream.getTracks().forEach((track) => track.stop());
+      this.localStream = null;
+    }
     this.onEndVideoCall?.();
   }
 

@@ -7,11 +7,13 @@ import {
   useState,
 } from 'react';
 import { Pair, SetAnswerBody, SetOfferBody } from './api/types';
-import { Chat, Message } from './Chat';
+import { CallInfoMessage, Chat, Message } from './Chat';
 import { P2pSession } from './api/simplePeer';
-import { VideoPlayer } from './api/VideoPlayer';
+import { VideoPlayer } from './components/VideoPlayer';
 import { P2pWsClient } from './server/p2p_ws';
 import { WsStatus } from './server/webSocket';
+import { PhoneButton } from './components/PhoneButton';
+import { usePlayIncomingCallRing } from './hooks/usePlayIncomingCallRing';
 
 type PairState = 0 | 1 | 2 | 3;
 type VideoCallStatus = 'off' | 'incoming' | 'outgoing' | 'on';
@@ -44,6 +46,14 @@ export const Initializer = () => {
     });
     return map;
   }, [pairs, p2pChannels]);
+
+  const [playIncomingCallRing, stopIncomingCallRing] =
+    usePlayIncomingCallRing();
+
+  useEffect(() => {
+    if (videoCallStatus === 'incoming') playIncomingCallRing();
+    else stopIncomingCallRing();
+  }, [videoCallStatus, playIncomingCallRing, stopIncomingCallRing]);
 
   useEffect(() => {
     userIdRef.current = userId;
@@ -182,6 +192,54 @@ export const Initializer = () => {
     return () => ws.disconnect();
   }, []);
 
+  useEffect(() => {
+    if (videoCallStatus === 'on') {
+      setMessagesMap((messagesMap) => ({
+        ...messagesMap,
+        [currentPairId]: [
+          ...messagesMap[currentPairId],
+          { type: 'callInfo', start: true, timestamp: Date.now() },
+        ],
+      }));
+    }
+    if (videoCallStatus === 'off') {
+      const now = Date.now();
+      setMessagesMap((messagesMap) => {
+        if (!messagesMap[currentPairId]?.length) {
+          return messagesMap;
+        }
+
+        let callStartMessage: CallInfoMessage | undefined;
+
+        for (let i = messagesMap[currentPairId].length - 1; i >= 0; i--) {
+          const message = messagesMap[currentPairId][i];
+          if (message.type === 'callInfo') {
+            if (message.start) callStartMessage = message;
+            break;
+          }
+        }
+
+        if (!callStartMessage) {
+          console.error('For endCall message there is no startCall message');
+          return messagesMap;
+        }
+
+        return {
+          ...messagesMap,
+          [currentPairId]: [
+            ...messagesMap[currentPairId],
+            {
+              type: 'callInfo',
+              start: false,
+              timestamp: now,
+              duration: now - callStartMessage.timestamp,
+            },
+          ],
+        };
+      });
+    }
+  }, [videoCallStatus, currentPairId]);
+
   const sendText = useCallback(
     (text: string) => {
       const session = p2pInstancesRef.current[currentPairId];
@@ -237,13 +295,19 @@ export const Initializer = () => {
 
     if (!session) return console.error('Сессия не найдена для звонка');
 
+    setVideoCallStatus((status) =>
+      status === 'off' ? 'outgoing' : status === 'incoming' ? 'on' : status,
+    );
+
     session.addCameraStream().then((stream) => {
-      if (!stream) return console.error('Поток не нашелся');
+      if (!stream) {
+        setVideoCallStatus((status) =>
+          status === 'outgoing' ? 'off' : status === 'on' ? 'incoming' : status,
+        );
+        return console.error('Поток не нашелся');
+      }
 
       setLocalStream(stream);
-      setVideoCallStatus((status) =>
-        status === 'off' ? 'outgoing' : status === 'incoming' ? 'on' : status,
-      );
     });
   }, [currentPairId]);
 
@@ -251,9 +315,6 @@ export const Initializer = () => {
     const p2pInstance = p2pInstancesRef.current[currentPairId];
     if (!p2pInstance) {
       return console.error('Сессия не найдена для разрыва звонка');
-    }
-    if (!localStream) {
-      return console.error('При завершении звонка поток не нашелся');
     }
 
     p2pInstance.endVideoCall();
@@ -272,7 +333,7 @@ export const Initializer = () => {
             <div>
               <h2>Users</h2>
               {pairIds.length > 0 ? (
-                <ul style={{ listStyle: 'none', width: 200 }}>
+                <ul style={{ listStyle: 'none', width: 200, padding: 0 }}>
                   {pairIds.map((pairId) => (
                     <li key={pairId}>
                       <button
@@ -282,9 +343,14 @@ export const Initializer = () => {
                             pairsState[pairId]
                           ],
                           cursor: 'pointer',
+                          padding: 10,
+                          width: '100%',
+                          borderRadius: 5,
+                          border: 'none',
+                          boxShadow: 'inset -2px -2px 5px rgba(0, 0, 0, 0.2)',
                         }}
                       >
-                        {pairId + ' State: ' + pairsState[pairId]}
+                        {pairId.split('_vs_').find((id) => id !== userId)}
                       </button>
                     </li>
                   ))}
@@ -294,7 +360,7 @@ export const Initializer = () => {
               )}
             </div>
 
-            <div>
+            <div style={{ flexGrow: 1, padding: '0 20px' }}>
               <h2>Chat</h2>
               {currentPairId ? (
                 <div>
@@ -309,59 +375,65 @@ export const Initializer = () => {
                   />
                   {pairsState[currentPairId] === 3 && (
                     <div>
+                      {videoCallStatus === 'incoming' && <p>Входящий звонок</p>}
                       <div
                         style={{ display: 'flex', gap: 10, marginBottom: 10 }}
                       >
-                        {!localStream && !remoteStream && (
-                          <button
-                            onClick={joinVideoCall}
-                            style={{
-                              padding: '10px 20px',
-                              fontSize: 16,
-                              cursor: 'pointer',
-                            }}
-                          >
-                            Позвонить
-                          </button>
+                        {videoCallStatus === 'off' && (
+                          <PhoneButton type="call" onClick={joinVideoCall} />
                         )}
-                        {remoteStream && !localStream && (
-                          <button
-                            onClick={joinVideoCall}
-                            style={{
-                              padding: '10px 20px',
-                              fontSize: 16,
-                              cursor: 'pointer',
-                            }}
-                          >
-                            Присоединиться к звонку
-                          </button>
+                        {videoCallStatus === 'incoming' && (
+                          <PhoneButton type="answer" onClick={joinVideoCall} />
                         )}
-                        {(videoCallStatus === 'on' ||
-                          videoCallStatus === 'outgoing') && (
-                          <button
-                            onClick={endVideoCall}
-                            style={{
-                              padding: '10px 20px',
-                              fontSize: 16,
-                              cursor: 'pointer',
-                            }}
-                          >
-                            Завершить звонок
-                          </button>
+                        {videoCallStatus !== 'off' && (
+                          <PhoneButton type="hangup" onClick={endVideoCall} />
                         )}
-                        <span>Video call status: {videoCallStatus}</span>
                       </div>
 
                       <div style={{ display: 'flex', gap: 20 }}>
-                        {localStream && (
-                          <div>
-                            <p style={{ margin: '0 0 5px 0', fontSize: 14 }}>
-                              Вы
+                        {videoCallStatus === 'outgoing' &&
+                          !localStream &&
+                          !remoteStream && (
+                            <p
+                              style={{
+                                margin: '0 0 5px 0',
+                                fontSize: 14,
+                              }}
+                            >
+                              Исходящий звонок...
                             </p>
-                            <VideoPlayer stream={localStream} muted />
-                          </div>
+                          )}
+                        {localStream && (
+                          <>
+                            <div>
+                              <p style={{ margin: '0 0 5px 0', fontSize: 14 }}>
+                                Вы
+                              </p>
+                              <VideoPlayer stream={localStream} muted />
+                            </div>
+
+                            {!remoteStream &&
+                              videoCallStatus === 'outgoing' && (
+                                <div
+                                  style={{
+                                    display: 'flex',
+                                    justifyContent: 'center',
+                                    alignItems: 'center',
+                                  }}
+                                >
+                                  <p
+                                    style={{
+                                      margin: '0 0 5px 0',
+                                      fontSize: 14,
+                                    }}
+                                  >
+                                    Ожидайте ответа собеседника...
+                                  </p>
+                                </div>
+                              )}
+                          </>
                         )}
-                        {remoteStream && (
+                        {remoteStream && videoCallStatus === 'on' && (
                           <div>
                             <p style={{ margin: '0 0 5px 0', fontSize: 14 }}>
                               Собеседник
@@ -455,6 +527,9 @@ function initiateP2P({
           next[pairId] = true;
         } else {
           console.log('Disconnected');
+          setLocalStream(null);
+          setRemoteStream(null);
+          setVideoCallStatus('off');
           delete next[pairId];
         }
         return next;
