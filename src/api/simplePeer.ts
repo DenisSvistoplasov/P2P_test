@@ -1,5 +1,9 @@
 import Peer, { SignalData } from '@workadventure/simple-peer';
-import { decrypt, decryptIncomingTracks, encrypt, encryptOutgoingTracks, generateAliceKeys } from '../cryptoUtils';
+import { decrypt, encrypt, generateAliceKeys } from '../utils/cryptoUtils';
+import {
+  decryptIncomingTracks,
+  encryptOutgoingTracks,
+} from '../utils/cryptoUtilsForStream';
 
 const CHUNK_SIZE = 16384; // 16 КБ
 
@@ -56,6 +60,7 @@ export class P2pSession {
   private _aliceKeyPair: CryptoKeyPair | null = null;
   private _bobPublicKey: CryptoKey | null = null;
   private sharedKey: CryptoKey | null = null;
+
   public isCryptoReady = false;
 
   private async tryCreateSharedKey() {
@@ -81,6 +86,15 @@ export class P2pSession {
     this.tryCreateSharedKey();
   }
 
+  private killLocalStream() {
+    if (this.localStream) {
+      console.log('Killing local stream');
+      this.peer.removeStream(this.localStream);
+      this.localStream.getTracks().forEach((track) => track.stop());
+      this.localStream = null;
+    }
+  }
+
   constructor(config: P2pSessionConfig) {
     // 1. Создаем внутренний пир
     this.peer = new Peer({
@@ -99,7 +113,6 @@ export class P2pSession {
     this.peer.on('connect', async () => {
       if (this.isConnected) return;
       this.isConnected = true;
-      console.log('P2P connected');
 
       config.onStatusChange(true); // Соединение установлено (Статус 3)
 
@@ -108,23 +121,22 @@ export class P2pSession {
       this.setAliceKeyPair(aliceKeyPair);
 
       // Отправляем aliceJwkKey Бобу
-      console.log('Sent aliceJwkKey');
       this.peer.send(JSON.stringify({ type: 'jwkKey', value: aliceJwkKey }));
     });
 
     this.peer.on('close', () => {
-      config.onStatusChange(false); // Соединение упало
+      console.log('p2p on close');
+      config.onStatusChange(false);
+      this.killLocalStream();
     });
 
     this.peer.on('error', (err) => {
       console.error('P2P Error:', err);
-      config.onStatusChange(false);
     });
 
     // 3. Инкапсулируем всю сложную логику разбора чанков и картинок!
     this.peer.on('data', async (data: Uint8Array) => {
-      console.log('on data: ', data);
-      console.log('isCryptoReady', this.isCryptoReady);
+      console.log('on data. isCryptoReady', this.isCryptoReady);
 
       data = this.sharedKey ? await decrypt(data, this.sharedKey) : data;
 
@@ -194,7 +206,7 @@ export class P2pSession {
 
     // 4. Входящий медиа поток
     this.peer.on('stream', async (remoteStream: MediaStream) => {
-      console.log('On stream', remoteStream);
+      console.log('On incoming stream', remoteStream);
 
       if (this.peer._pc && this.sharedKey) {
         const receivers = this.peer._pc.getReceivers();
@@ -301,11 +313,7 @@ export class P2pSession {
         : endVideoCallMessage;
       this.peer.send(packetToSend);
     }
-    if (this.localStream) {
-      this.peer.removeStream(this.localStream);
-      this.localStream.getTracks().forEach((track) => track.stop());
-      this.localStream = null;
-    }
+    this.killLocalStream();
     this.onEndVideoCall?.();
   }
 

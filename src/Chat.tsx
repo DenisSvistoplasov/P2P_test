@@ -1,5 +1,5 @@
 import { FC, useState } from 'react';
-import { formateTimeDuration } from './utils';
+import { formateTimeDuration } from './utils/utils';
 
 export type TextMessage = {
   type: 'text';
@@ -47,7 +47,7 @@ export const Chat: FC<{
   };
 
   return (
-    <div style={{marginBottom: 10}}>
+    <div style={{ marginBottom: 10 }}>
       <div>Chat with user: {interlocutorId}</div>
 
       {messages.length > 0 && (
@@ -78,12 +78,17 @@ export const Chat: FC<{
                     : message.isOwner
                       ? 'lightgreen'
                       : 'lightblue',
-                borderRadius: message.type === 'text' ? (message.isOwner ? '7px 7px 0 7px' : '0 7px 7px 7px') : '5px',
+                borderRadius:
+                  message.type === 'text'
+                    ? message.isOwner
+                      ? '7px 7px 0 7px'
+                      : '0 7px 7px 7px'
+                    : '5px',
                 padding: '2px 8px',
               }}
             >
               {message.type === 'text' ? (
-                <span style={{fontFamily: 'sans-serif'}}>{message.text}</span>
+                <span style={{ fontFamily: 'sans-serif' }}>{message.text}</span>
               ) : message.type === 'image' ? (
                 <div>
                   {' '}

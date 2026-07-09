@@ -14,7 +14,6 @@ import { P2pWsClient } from './server/p2p_ws';
 import { WsStatus } from './server/webSocket';
 import { PhoneButton } from './components/PhoneButton';
 import { usePlayIncomingCallRing } from './hooks/usePlayIncomingCallRing';
-import { useWorker } from './hooks/useWorker';
 
 type PairState = 0 | 1 | 2 | 3;
 type VideoCallStatus = 'off' | 'incoming' | 'outgoing' | 'on';
@@ -50,10 +49,6 @@ export const Initializer = () => {
 
   const [playIncomingCallRing, stopIncomingCallRing] =
     usePlayIncomingCallRing();
-  
-  // 
-  const worker = useWorker();
-  // 
 
   useEffect(() => {
     if (videoCallStatus === 'incoming') playIncomingCallRing();
@@ -73,18 +68,14 @@ export const Initializer = () => {
       ws.send({ type: 'setAnswer', payload: data });
 
     ws.onMessage((message) => {
-      console.log('Got message: ', message.type);
-
       if (message.type === 'initial') {
         const { yourId, pairs } = message.payload;
         localStorage.setItem('userId', yourId);
-        console.log('Set yourId: ', yourId);
         userIdRef.current = yourId;
         setUserId(yourId);
         setPairs(pairs);
 
         pairs.forEach((pair) => {
-          console.log('yourId: ', yourId);
           initiateP2P({
             p2pInstancesRef,
             pair,
@@ -98,8 +89,6 @@ export const Initializer = () => {
             setVideoCallStatus,
           });
         });
-      } else {
-        console.log('userIdRef.current: ', userIdRef.current);
       }
 
       if (message.type === 'putPair') {
@@ -136,7 +125,6 @@ export const Initializer = () => {
         if (!p2pInstance) {
           return console.error('There is no instance on get Offer!!!');
         }
-        console.log('got Offer: ', message.payload);
         setPairs((pairs) =>
           pairs.map((pair) =>
             pair.pairId === pairId ? { ...pair, offer } : pair,
@@ -154,7 +142,6 @@ export const Initializer = () => {
         if (!p2pInstance) {
           return console.error('There is no instance on get Answer!!!');
         }
-        console.log('got Answer: ', message.payload);
         setPairs((pairs) =>
           pairs.map((pair) =>
             pair.pairId === pairId ? { ...pair, answer } : pair,
@@ -225,7 +212,6 @@ export const Initializer = () => {
         }
 
         if (!callStartMessage) {
-          console.error('For endCall message there is no startCall message');
           return messagesMap;
         }
 
@@ -496,9 +482,7 @@ function initiateP2P({
 }) {
   const pairId = pair.pairId;
   const isInitiator = userId === pair.senderId;
-  console.log('userId: ', userId);
-  console.log('pair.senderId: ', pair.senderId);
-  console.log('InitiateP2P. initiator:', isInitiator);
+  console.log('InitiateP2P. I am initiator:', isInitiator);
 
   // 1. Создаем сессию. Передаем флаг инициатора.
   const p2pInstance = new P2pSession({
@@ -506,8 +490,7 @@ function initiateP2P({
 
     // Ловим сгенерированный оффер/ансер и отправляем на бэкенд
     onSignal: (signalData) => {
-      console.log('signalData: ', signalData);
-      console.log('isInitiator: ', isInitiator);
+      console.log('onSignal ');
       if (isInitiator) {
         setOffer({
           userId,
@@ -529,10 +512,10 @@ function initiateP2P({
       setP2pChannels((prev) => {
         const next = { ...prev };
         if (isConnected) {
-      console.log('p2p connected');
+          console.log('p2p connected');
           next[pairId] = true;
         } else {
-          console.log('Disconnected p2p');
+          console.log('p2p disconnected');
           setLocalStream(null);
           setRemoteStream(null);
           setVideoCallStatus('off');
