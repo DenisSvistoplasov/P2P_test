@@ -1,4 +1,5 @@
 import Peer, { SignalData } from '@workadventure/simple-peer';
+import { decrypt, encrypt, generateAliceKeys } from '../cryptoUtils';
 
 const CHUNK_SIZE = 16384; // 16 КБ
 
@@ -23,7 +24,8 @@ const iceServers = [
 export type P2pMessage =
   | { type: 'text'; text: string }
   | { type: 'meta'; name: string; mime: string; size: number }
-  | { type: 'endVideoCall' };
+  | { type: 'endVideoCall' }
+  | { type: 'jwkKey'; value: JsonWebKey };
 
 interface P2pSessionConfig {
   initiator: boolean;
@@ -42,6 +44,7 @@ interface P2pSessionConfig {
 
 export class P2pSession {
   private peer: Peer;
+  private isConnected: boolean = false;
   private fileMeta: {
     name: string;
     mime: string;
@@ -50,6 +53,33 @@ export class P2pSession {
   } | null = null;
   private localStream: MediaStream | null = null;
   private onEndVideoCall: (() => void) | null = null;
+  private _aliceKeyPair: CryptoKeyPair | null = null;
+  private _bobPublicKey: CryptoKey | null = null;
+  private sharedKey: CryptoKey | null = null;
+  public isCryptoReady = false;
+
+  private async tryCreateSharedKey() {
+    if (this._aliceKeyPair && this._bobPublicKey) {
+      this.sharedKey = await window.crypto.subtle.deriveKey(
+        { name: 'ECDH', public: this._bobPublicKey }, // Чужой публичный ключ
+        this._aliceKeyPair.privateKey, // Свой приватный ключ
+        { name: 'AES-GCM', length: 256 }, // Какой ключ мы хотим получить на выходе
+        false, // Нельзя извлечь из памяти
+        ['encrypt', 'decrypt'], // Что этим ключом разрешено делать
+      );
+      this.isCryptoReady = true;
+      console.log('Shared key created');
+    }
+  }
+
+  private setAliceKeyPair(aliceKeyPair: CryptoKeyPair) {
+    this._aliceKeyPair = aliceKeyPair;
+    this.tryCreateSharedKey();
+  }
+  private setBobPublicKey(bobPublicKey: CryptoKey) {
+    this._bobPublicKey = bobPublicKey;
+    this.tryCreateSharedKey();
+  }
 
   constructor(config: P2pSessionConfig) {
     // 1. Создаем внутренний пир
@@ -66,9 +96,20 @@ export class P2pSession {
       config.onSignal(data); // Передаем наружу готовый оффер/ансер для отправки на сервер
     });
 
-    this.peer.on('connect', () => {
+    this.peer.on('connect', async () => {
+      if (this.isConnected) return;
+      this.isConnected = true;
+      console.log('P2P connected');
+
       config.onStatusChange(true); // Соединение установлено (Статус 3)
-      console.log('p2p connected');
+
+      const { aliceKeyPair, aliceJwkKey } = await generateAliceKeys();
+
+      this.setAliceKeyPair(aliceKeyPair);
+
+      // Отправляем aliceJwkKey Бобу
+      console.log('Sent aliceJwkKey');
+      this.peer.send(JSON.stringify({ type: 'jwkKey', value: aliceJwkKey }));
     });
 
     this.peer.on('close', () => {
@@ -81,12 +122,32 @@ export class P2pSession {
     });
 
     // 3. Инкапсулируем всю сложную логику разбора чанков и картинок!
-    this.peer.on('data', (data: Uint8Array) => {
+    this.peer.on('data', async (data: Uint8Array) => {
+      console.log('on data: ', data);
+      console.log('isCryptoReady', this.isCryptoReady);
+
+      data = this.sharedKey ? await decrypt(data, this.sharedKey) : data;
+
       try {
         // Пробуем распарсить как текст (сообщение или мета файла)
         const text = new TextDecoder().decode(data);
         const parsed = JSON.parse(text) as P2pMessage;
 
+        // На случай, если JSON.parse случайно сожрал кусок файла и выдал строку/число
+        if (!parsed || typeof parsed !== 'object' || !('type' in parsed)) {
+          throw new Error('Not a P2pMessage');
+        }
+
+        if (parsed.type === 'jwkKey') {
+          const bobPublicKey = await window.crypto.subtle.importKey(
+            'jwk',
+            parsed.value,
+            { name: 'ECDH', namedCurve: 'P-256' },
+            true,
+            [],
+          );
+          this.setBobPublicKey(bobPublicKey);
+        }
         if (parsed.type === 'text') {
           config.onTextMessage(parsed.text);
         }
@@ -98,9 +159,10 @@ export class P2pSession {
           this.endVideoCall(false);
         }
       } catch (e) {
-        // Если упало — значит прилетели бинарные данные (кусок картинки)
-        if (!this.fileMeta)
+        // Если упало — значит прилетели бинарные данные (кусок файла)
+        if (!this.fileMeta) {
           return console.error('Получены бинарные данные без мета-информации');
+        }
 
         // Копим чанки внутри класса
         this.fileMeta.chunks.push(data);
@@ -147,13 +209,18 @@ export class P2pSession {
   }
 
   /** Отправить текст */
-  public sendText(text: string) {
-    const msg: P2pMessage = { type: 'text', text };
-    this.peer.send(JSON.stringify(msg));
+  public async sendText(text: string) {
+    const message: P2pMessage = { type: 'text', text };
+    const stringifiedMessage = JSON.stringify(message);
+    const packetToSend = this.sharedKey
+      ? await encrypt(stringifiedMessage, this.sharedKey)
+      : stringifiedMessage;
+
+    this.peer.send(packetToSend);
   }
 
   /** Отправить картинку */
-  public sendImage(file: File) {
+  public async sendImage(file: File) {
     // 1. Сначала отправляем текстовые мета-данные, чтобы та сторона подготовилась
     const meta: P2pMessage = {
       type: 'meta',
@@ -161,20 +228,27 @@ export class P2pSession {
       mime: file.type,
       size: file.size,
     };
-    this.peer.send(JSON.stringify(meta));
+    const stringifiedMeta = JSON.stringify(meta);
+    const packetToSend = this.sharedKey
+      ? await encrypt(stringifiedMeta, this.sharedKey)
+      : stringifiedMeta;
+    this.peer.send(packetToSend);
 
     // 2. Читаем файл и нарезаем его на чанки по 16 КБ
     const reader = new FileReader();
-    reader.onload = () => {
+    reader.onload = async () => {
       const buffer = reader.result as ArrayBuffer;
 
       let offset = 0;
       while (offset < buffer.byteLength) {
         // Берем кусочек в 16 КБ
         const chunk = buffer.slice(offset, offset + CHUNK_SIZE);
-
-        // Отправляем чанк в сеть
-        this.peer.send(new Uint8Array(chunk));
+        const chunkUint8Array = new Uint8Array(chunk);
+        const packetToSend = this.sharedKey
+          ? await encrypt(chunkUint8Array, this.sharedKey)
+          : chunkUint8Array;
+        // Отправляем чанк
+        this.peer.send(packetToSend);
 
         offset += CHUNK_SIZE;
       }
@@ -205,10 +279,16 @@ export class P2pSession {
   }
 
   /** Отключить камеру */
-  public endVideoCall(isInitiator = true) {
+  public async endVideoCall(isInitiator = true) {
     console.log('endVideoCall. isInitiator: ', isInitiator);
 
-    if (isInitiator) this.peer.send(JSON.stringify({ type: 'endVideoCall' }));
+    if (isInitiator) {
+      const endVideoCallMessage = JSON.stringify({ type: 'endVideoCall' });
+      const packetToSend = this.sharedKey
+        ? await encrypt(endVideoCallMessage, this.sharedKey)
+        : endVideoCallMessage;
+      this.peer.send(packetToSend);
+    }
     if (this.localStream) {
       this.peer.removeStream(this.localStream);
       this.localStream.getTracks().forEach((track) => track.stop());

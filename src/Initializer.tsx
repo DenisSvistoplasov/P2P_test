@@ -524,9 +524,10 @@ function initiateP2P({
       setP2pChannels((prev) => {
         const next = { ...prev };
         if (isConnected) {
+      console.log('p2p connected');
           next[pairId] = true;
         } else {
-          console.log('Disconnected');
+          console.log('Disconnected p2p');
           setLocalStream(null);
           setRemoteStream(null);
           setVideoCallStatus('off');
