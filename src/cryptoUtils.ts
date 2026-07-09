@@ -54,3 +54,78 @@ export const decrypt = async (
 
   return decryptedBytes;
 };
+
+export const encryptOutgoingTracks = (
+  senders: RTCRtpSender[],
+  sharedKey: CryptoKey,
+) => {
+  senders.forEach((sender) => {
+    // Нас интересует только видеотрек (для аудио логика будет такой же)
+    if (
+      sender.track &&
+      (sender.track.kind === 'video' || sender.track.kind === 'audio')
+    ) {
+      // 1. Создаем нативный трансформер JavaScript
+      const transformStream = new TransformStream({
+        async transform(frame, controller) {
+          // frame — это объект RTCEncodedVideoFrame (один кадр видео)
+
+          // Достаем сырые байты кадра
+          const rawBytes = new Uint8Array(frame.data);
+
+          // Шифруем эти байты нашей созданной функцией encrypt
+          // ВАЖНО: передаем в encrypt как Uint8Array
+          const encryptedPacket = await encrypt(rawBytes, sharedKey);
+
+          // Записываем зашифрованные байты обратно в кадр
+          frame.data = encryptedPacket.buffer as ArrayBuffer;
+
+          // Проталкиваем зашифрованный кадр дальше в сеть
+          controller.enqueue(frame);
+        },
+      });
+
+      // 2. Вставляем наш трансформер в отправляемый видеопоток
+      sender.transform = transformStream;
+    }
+  });
+};
+
+export const decryptIncomingTracks = (
+  receivers: RTCRtpReceiver[],
+  sharedKey: CryptoKey,
+) => {
+  // Вызывать этот код нужно, когда peer сообщил о получении удаленного стрима (событие 'stream')
+  // const receivers = this.peer._pc.getReceivers();
+
+  receivers.forEach((receiver) => {
+    if (
+      receiver.track &&
+      (receiver.track.kind === 'video' || receiver.track.kind === 'audio')
+    ) {
+      // 1. Создаем трансформер для дешифрации
+      const transformStream = new TransformStream({
+        async transform(frame, controller) {
+          const encryptedBytes = new Uint8Array(frame.data);
+
+          try {
+            // Расшифровываем байты кадра нашей функцией decrypt
+            const decryptedBytes = await decrypt(encryptedBytes, sharedKey);
+
+            // Возвращаем чистые байты обратно в кадр
+            frame.data = decryptedBytes.buffer as ArrayBuffer;
+
+            // Отдаем чистый кадр браузеру для отрисовки на экране
+            controller.enqueue(frame);
+          } catch (e) {
+            // Если ключ еще не долетел, просто дропаем кадр, чтобы не ломать декодер
+            console.error('Не удалось расшифровать кадр видео/аудио', e);
+          }
+        },
+      });
+
+      // 2. Вставляем трансформер во входящий видеопоток
+      receiver.transform = transformStream;
+    }
+  });
+};

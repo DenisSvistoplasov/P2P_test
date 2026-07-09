@@ -14,6 +14,7 @@ import { P2pWsClient } from './server/p2p_ws';
 import { WsStatus } from './server/webSocket';
 import { PhoneButton } from './components/PhoneButton';
 import { usePlayIncomingCallRing } from './hooks/usePlayIncomingCallRing';
+import { useWorker } from './hooks/useWorker';
 
 type PairState = 0 | 1 | 2 | 3;
 type VideoCallStatus = 'off' | 'incoming' | 'outgoing' | 'on';
@@ -49,6 +50,10 @@ export const Initializer = () => {
 
   const [playIncomingCallRing, stopIncomingCallRing] =
     usePlayIncomingCallRing();
+  
+  // 
+  const worker = useWorker();
+  // 
 
   useEffect(() => {
     if (videoCallStatus === 'incoming') playIncomingCallRing();

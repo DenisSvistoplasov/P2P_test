@@ -11,7 +11,8 @@
             "ES2023"
         ],
         "jsx": "react-jsx",
-        "target": "ES2015",
-        "moduleResolution": "bundler" 
+        "target": "ES2022",         // Изменено с ES2015, чтобы TypeScript понимал современный JS
+        "module": "ESNext",         // Добавлено: разрешает использовать import.meta.url
+        "moduleResolution": "bundler"
     }
 }

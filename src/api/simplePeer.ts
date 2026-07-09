@@ -1,5 +1,5 @@
 import Peer, { SignalData } from '@workadventure/simple-peer';
-import { decrypt, encrypt, generateAliceKeys } from '../cryptoUtils';
+import { decrypt, decryptIncomingTracks, encrypt, encryptOutgoingTracks, generateAliceKeys } from '../cryptoUtils';
 
 const CHUNK_SIZE = 16384; // 16 КБ
 
@@ -86,7 +86,7 @@ export class P2pSession {
     this.peer = new Peer({
       initiator: config.initiator,
       trickle: false,
-      config: { iceServers },
+      config: { iceServers, ...({ encodedTransform: true } as any) },
     });
 
     this.onEndVideoCall = config.onEndVideoCall;
@@ -195,6 +195,12 @@ export class P2pSession {
     // 4. Входящий медиа поток
     this.peer.on('stream', async (remoteStream: MediaStream) => {
       console.log('On stream', remoteStream);
+
+      if (this.peer._pc && this.sharedKey) {
+        const receivers = this.peer._pc.getReceivers();
+        decryptIncomingTracks(receivers, this.sharedKey);
+      }
+
       config.onIncomingStream(remoteStream);
     });
   }
@@ -270,8 +276,14 @@ export class P2pSession {
       // и отправит новый answer на сервер
       this.peer.addStream(stream);
 
+      // 3. Зашифровываем поток
+      if (this.peer._pc && this.sharedKey) {
+        const senders = this.peer._pc.getSenders();
+        encryptOutgoingTracks(senders, this.sharedKey);
+      }
+
+      // 4. Сохраняем свой поток в стейт
       this.localStream = stream;
-      // 3. Сохраняем свой поток в стейт
       return stream;
     } catch (err) {
       console.error('Ошибка доступа к камере или микрофону:', err);
