@@ -20,8 +20,8 @@ export const VideoPlayer = ({
   return (
     <div style={{
       position: 'relative',
-      width: 240,
-      height: 180,
+      width: '100%',
+      aspectRatio: '4/3',
       borderRadius: 10,
       overflow: 'hidden',
       cursor: 'pointer',

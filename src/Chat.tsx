@@ -91,12 +91,29 @@ export const Chat: FC<{
                 <span style={{ fontFamily: 'sans-serif' }}>{message.text}</span>
               ) : message.type === 'image' ? (
                 <div>
-                  {' '}
                   <img
                     src={message.url}
-                    style={{ width: 100, height: 100, objectFit: 'contain' }}
-                  />{' '}
-                  {message.name}, size: {formateFileSize(message.size)}
+                    style={{
+                      width: '100%',
+                      aspectRatio: '4/3',
+                      objectFit: 'contain',
+                    }}
+                  />
+                  <p
+                    style={{
+                      fontSize: 10,
+                      color: '#555',
+                      margin: 0,
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                    }}
+                  >
+                    {message.name}
+                  </p>
+                  <p style={{ margin: 0, fontSize: 10, color: '#555' }}>
+                    size: {formateFileSize(message.size)}
+                  </p>
                 </div>
               ) : (
                 <span>
@@ -116,7 +133,7 @@ export const Chat: FC<{
         </ul>
       )}
 
-      <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
         <textarea
           value={text}
           onChange={(e) => setText(e.target.value)}
@@ -127,9 +144,15 @@ export const Chat: FC<{
               onClick();
             }
           }}
-          style={{ minWidth: 200, minHeight: 40, fontSize: 14, padding: 8 }}
+          style={{
+            flexGrow: 1,
+            minWidth: 200,
+            minHeight: 40,
+            fontSize: 14,
+            padding: 8,
+          }}
         />
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
           <button
             onClick={onClick}
             disabled={!connected}
@@ -138,20 +161,13 @@ export const Chat: FC<{
             Send
           </button>
 
-          <label
-            htmlFor="fileInput"
-            style={{
-              padding: '8px 16px',
-              fontSize: 14,
-              cursor: 'pointer',
-              backgroundColor: '#f0f0f0',
-              border: '1px solid #ccc',
-              borderRadius: 4,
-              textAlign: 'center',
-            }}
+          <button
+            style={{ padding: '8px 16px', fontSize: 14, cursor: 'pointer' }}
           >
-            Choose Image
-          </label>
+            <label htmlFor="fileInput" style={{ cursor: 'pointer' }}>
+              Choose Image
+            </label>
+          </button>
           <input
             type="file"
             id="fileInput"

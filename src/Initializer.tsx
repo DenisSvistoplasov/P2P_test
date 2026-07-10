@@ -320,11 +320,11 @@ export const Initializer = () => {
       ) : (
         <>
           <h1>Current user: {userId}</h1>
-          <div style={{ display: 'flex', gap: 50 }}>
-            <div>
+          <div style={{ display: 'flex', gap: '5%', width: '100%' }}>
+            <div style={{  width: '10%', minWidth: 100 }}>
               <h2>Users</h2>
               {pairIds.length > 0 ? (
-                <ul style={{ listStyle: 'none', width: 200, padding: 0 }}>
+                <ul style={{ display: 'flex', flexDirection: 'column', gap: 10, listStyle: 'none', margin: 0, padding: 0 }}>
                   {pairIds.map((pairId) => (
                     <li key={pairId}>
                       <button
@@ -351,7 +351,7 @@ export const Initializer = () => {
               )}
             </div>
 
-            <div style={{ flexGrow: 1, padding: '0 20px' }}>
+            <div style={{ flexGrow: 1, flexShrink: 1, overflow: 'hidden' }}>
               <h2>Chat</h2>
               {currentPairId ? (
                 <div>
@@ -381,7 +381,7 @@ export const Initializer = () => {
                         )}
                       </div>
 
-                      <div style={{ display: 'flex', gap: 20 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                         {videoCallStatus === 'outgoing' &&
                           !localStream &&
                           !remoteStream && (
@@ -396,7 +396,7 @@ export const Initializer = () => {
                           )}
                         {localStream && (
                           <>
-                            <div>
+                            <div style={{ width: '49%' }}>
                               <p style={{ margin: '0 0 5px 0', fontSize: 14 }}>
                                 Вы
                               </p>
@@ -425,7 +425,7 @@ export const Initializer = () => {
                           </>
                         )}
                         {remoteStream && videoCallStatus === 'on' && (
-                          <div>
+                          <div style={{ width: '49%' }}>
                             <p style={{ margin: '0 0 5px 0', fontSize: 14 }}>
                               Собеседник
                             </p>
@@ -437,7 +437,7 @@ export const Initializer = () => {
                   )}
                 </div>
               ) : (
-                pairIds.length > 0 && <span>Select pair</span>
+                pairIds.length > 0 && <span>Select user</span>
               )}
             </div>
           </div>{' '}
