@@ -14,6 +14,7 @@ import { P2pWsClient } from './server/p2p_ws';
 import { WsStatus } from './server/webSocket';
 import { PhoneButton } from './components/PhoneButton';
 import { usePlayIncomingCallRing } from './hooks/usePlayIncomingCallRing';
+import { useWsClient } from './hooks/useWsClient';
 
 type PairState = 0 | 1 | 2 | 3;
 type VideoCallStatus = 'off' | 'incoming' | 'outgoing' | 'on';
@@ -33,6 +34,8 @@ export const Initializer = () => {
   const userIdRef = useRef(userId);
   const wsRef = useRef<P2pWsClient | null>(null);
   const p2pInstancesRef = useRef<Record<string, P2pSession>>({});
+
+  const ws = useWsClient();
 
   const pairIds = useMemo(() => pairs.map((pair) => pair.pairId), [pairs]);
 
@@ -55,18 +58,40 @@ export const Initializer = () => {
     else stopIncomingCallRing();
   }, [videoCallStatus, playIncomingCallRing, stopIncomingCallRing]);
 
+  const setOffer = useCallback(
+    (data: SetOfferBody) => ws.send({ type: 'setOffer', payload: data }),
+    [],
+  );
+  const setAnswer = useCallback(
+    (data: SetAnswerBody) => ws.send({ type: 'setAnswer', payload: data }),
+    [],
+  );
+
+  useEffect(() => {
+    Object.entries(pairsState).forEach(([pairId, state]) => {
+      if (state == 2 && !p2pInstancesRef.current[pairId]) {
+        console.log('P2P reconnection', pairId);
+        initiateP2P({
+          p2pInstancesRef,
+          pair: pairs.find((pair) => pair.pairId === pairId)!,
+          userId: userIdRef.current,
+          setOffer,
+          setAnswer,
+          setP2pChannels,
+          setMessagesMap,
+          setRemoteStream,
+          setLocalStream,
+          setVideoCallStatus,
+        });
+      }
+    });
+  }, [pairsState, pairs]);
+
   useEffect(() => {
     userIdRef.current = userId;
   }, [userId]);
 
   useEffect(() => {
-    const ws = new P2pWsClient();
-
-    const setOffer = (data: SetOfferBody) =>
-      ws.send({ type: 'setOffer', payload: data });
-    const setAnswer = (data: SetAnswerBody) =>
-      ws.send({ type: 'setAnswer', payload: data });
-
     ws.onMessage((message) => {
       if (message.type === 'initial') {
         const { yourId, pairs } = message.payload;
@@ -176,7 +201,6 @@ export const Initializer = () => {
     });
 
     ws.onStatus(setWsStatus);
-    wsRef.current = ws;
 
     const localUserId = localStorage.getItem('userId') || generateUserId();
     ws.send({ type: 'initial', payload: { userId: localUserId } });
@@ -321,10 +345,19 @@ export const Initializer = () => {
         <>
           <h1>Current user: {userId}</h1>
           <div style={{ display: 'flex', gap: '5%', width: '100%' }}>
-            <div style={{  width: '10%', minWidth: 100 }}>
+            <div style={{ width: '10%', minWidth: 100 }}>
               <h2>Users</h2>
               {pairIds.length > 0 ? (
-                <ul style={{ display: 'flex', flexDirection: 'column', gap: 10, listStyle: 'none', margin: 0, padding: 0 }}>
+                <ul
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 10,
+                    listStyle: 'none',
+                    margin: 0,
+                    padding: 0,
+                  }}
+                >
                   {pairIds.map((pairId) => (
                     <li key={pairId}>
                       <button
@@ -381,7 +414,12 @@ export const Initializer = () => {
                         )}
                       </div>
 
-                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <div
+                        style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                        }}
+                      >
                         {videoCallStatus === 'outgoing' &&
                           !localStream &&
                           !remoteStream && (
@@ -523,6 +561,9 @@ function initiateP2P({
         }
         return next;
       });
+      if (!isConnected) {
+        delete p2pInstancesRef.current[pairId];
+      }
     },
 
     // Ловим чистый текст от собеседника и пушим в стейт сообщений

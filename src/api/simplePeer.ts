@@ -64,17 +64,17 @@ export class P2pSession {
   public isCryptoReady = false;
 
   private async tryCreateSharedKey() {
-    if (this._aliceKeyPair && this._bobPublicKey) {
-      this.sharedKey = await window.crypto.subtle.deriveKey(
-        { name: 'ECDH', public: this._bobPublicKey }, // Чужой публичный ключ
-        this._aliceKeyPair.privateKey, // Свой приватный ключ
-        { name: 'AES-GCM', length: 256 }, // Какой ключ мы хотим получить на выходе
-        false, // Нельзя извлечь из памяти
-        ['encrypt', 'decrypt'], // Что этим ключом разрешено делать
-      );
-      this.isCryptoReady = true;
-      console.log('Shared key created');
-    }
+    // if (this._aliceKeyPair && this._bobPublicKey) {
+    //   this.sharedKey = await window.crypto.subtle.deriveKey(
+    //     { name: 'ECDH', public: this._bobPublicKey }, // Чужой публичный ключ
+    //     this._aliceKeyPair.privateKey, // Свой приватный ключ
+    //     { name: 'AES-GCM', length: 256 }, // Какой ключ мы хотим получить на выходе
+    //     false, // Нельзя извлечь из памяти
+    //     ['encrypt', 'decrypt'], // Что этим ключом разрешено делать
+    //   );
+    //   this.isCryptoReady = true;
+    //   console.log('Shared key created');
+    // }
   }
 
   private setAliceKeyPair(aliceKeyPair: CryptoKeyPair) {
