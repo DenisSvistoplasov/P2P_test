@@ -64,17 +64,19 @@ export class P2pSession {
   public isCryptoReady = false;
 
   private async tryCreateSharedKey() {
-    // if (this._aliceKeyPair && this._bobPublicKey) {
-    //   this.sharedKey = await window.crypto.subtle.deriveKey(
-    //     { name: 'ECDH', public: this._bobPublicKey }, // Чужой публичный ключ
-    //     this._aliceKeyPair.privateKey, // Свой приватный ключ
-    //     { name: 'AES-GCM', length: 256 }, // Какой ключ мы хотим получить на выходе
-    //     false, // Нельзя извлечь из памяти
-    //     ['encrypt', 'decrypt'], // Что этим ключом разрешено делать
-    //   );
-    //   this.isCryptoReady = true;
-    //   console.log('Shared key created');
-    // }
+    console.log('tryCreateSharedKey: ');
+    if (this._aliceKeyPair && this._bobPublicKey) {
+      this.sharedKey = await window.crypto.subtle.deriveKey(
+        { name: 'ECDH', public: this._bobPublicKey }, // Чужой публичный ключ
+        this._aliceKeyPair.privateKey, // Свой приватный ключ
+        { name: 'AES-GCM', length: 256 }, // Какой ключ мы хотим получить на выходе
+        false, // Нельзя извлечь из памяти
+        ['encrypt', 'decrypt'], // Что этим ключом разрешено делать
+      );
+      this.isCryptoReady = true;
+      this.addDecryptVideoCallTransformer();
+      console.log('Shared key created');
+    }
   }
 
   private setAliceKeyPair(aliceKeyPair: CryptoKeyPair) {
@@ -92,6 +94,39 @@ export class P2pSession {
       this.peer.removeStream(this.localStream);
       this.localStream.getTracks().forEach((track) => track.stop());
       this.localStream = null;
+    }
+  }
+
+  private addDecryptVideoCallTransformer() {
+    console.log(
+      'addDecryptVideoCallTransformer: ',
+      !!this.peer._pc,
+      !!this.sharedKey,
+    );
+
+    if (this.peer._pc && this.sharedKey) {
+      const sharedKey = this.sharedKey;
+      // this.peer._pc.ontrack = (event) => {
+      //   console.log('._pc.ontrack: ');
+
+      //   decryptIncomingTracks([event.receiver], sharedKey);
+      //   this.peer._onTrack(event);
+      // };
+      // this.peer._pc.addEventListener('track', (event) => {
+      //   console.log('On track. event.receiver: ', event.receiver);
+      // });
+
+      // const receivers = this.peer._pc.getReceivers();
+
+      // decryptIncomingTracks(receivers, this.sharedKey);
+    } else {
+      console.error(
+        'Cannot add decrypt transformer. peer._pc:',
+        this.peer._pc,
+        'sharedKey:',
+        this.sharedKey,
+      );
+      // setTimeout(() => this.addDecryptVideoCallTransformer(), 200);
     }
   }
 
@@ -208,10 +243,21 @@ export class P2pSession {
     this.peer.on('stream', async (remoteStream: MediaStream) => {
       console.log('On incoming stream', remoteStream);
 
-      if (this.peer._pc && this.sharedKey) {
-        const receivers = this.peer._pc.getReceivers();
-        decryptIncomingTracks(receivers, this.sharedKey);
-      }
+      // if (this.peer._pc && this.sharedKey) {
+      //   this.peer._pc.addEventListener('track', (event) => {
+      //     event.receiver;
+      //   });
+      //   const receivers = this.peer._pc.getReceivers();
+      //   decryptIncomingTracks(receivers, this.sharedKey);
+      // } else {
+      //   console.error(
+      //     'Cannot add decrypt transformer. peer._pc:',
+      //     this.peer._pc,
+      //     'sharedKey:',
+      //     this.sharedKey,
+      //   );
+      //   // setTimeout(() => this.addDecryptVideoCallTransformer(), 200);
+      // }
 
       config.onIncomingStream(remoteStream);
     });
@@ -289,10 +335,10 @@ export class P2pSession {
       this.peer.addStream(stream);
 
       // 3. Зашифровываем поток
-      if (this.peer._pc && this.sharedKey) {
-        const senders = this.peer._pc.getSenders();
-        encryptOutgoingTracks(senders, this.sharedKey);
-      }
+      // if (this.peer._pc && this.sharedKey) {
+      //   const senders = this.peer._pc.getSenders();
+      //   encryptOutgoingTracks(senders, this.sharedKey);
+      // }
 
       // 4. Сохраняем свой поток в стейт
       this.localStream = stream;

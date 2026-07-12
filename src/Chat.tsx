@@ -1,5 +1,5 @@
-import { FC, useState } from 'react';
-import { formateTimeDuration } from './utils/utils';
+import { FC, useEffect, useRef, useState } from 'react';
+import { formateFileSize, formateTimeDuration } from './utils/utils';
 
 export type TextMessage = {
   type: 'text';
@@ -32,6 +32,14 @@ export const Chat: FC<{
 }> = ({ interlocutorId, connected, messages, sendText, sendFile }) => {
   const [text, setText] = useState<string>('');
 
+  const listRef = useRef<HTMLUListElement>(null);
+
+  useEffect(() => {
+    if (listRef.current) {
+      listRef.current.scrollTop = listRef.current.scrollHeight;
+    }
+  }, [messages.length]);
+
   const onFileFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file && connected) {
@@ -47,18 +55,21 @@ export const Chat: FC<{
   };
 
   return (
-    <div style={{ marginBottom: 10 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10,  marginBottom: 10, overflow: 'hidden' }}>
       <div>Chat with user: {interlocutorId}</div>
 
       {messages.length > 0 && (
         <ul
+          ref={listRef}
           style={{
             listStyle: 'none',
             display: 'flex',
             flexDirection: 'column',
             gap: 5,
+            maxHeight: 300,
             padding: 4,
             border: '1px solid',
+            overflow: 'auto',
           }}
         >
           {messages.map((message, i) => (
@@ -138,6 +149,7 @@ export const Chat: FC<{
           value={text}
           onChange={(e) => setText(e.target.value)}
           disabled={!connected}
+          placeholder="Сообщение..."
           onKeyDown={(e) => {
             if (e.key === 'Enter') {
               e.preventDefault();
@@ -158,17 +170,18 @@ export const Chat: FC<{
             disabled={!connected}
             style={{ padding: '8px 16px', fontSize: 14, cursor: 'pointer' }}
           >
-            Send
+            Отправить
           </button>
 
           <button
             style={{ padding: '8px 16px', fontSize: 14, cursor: 'pointer' }}
           >
             <label htmlFor="fileInput" style={{ cursor: 'pointer' }}>
-              Choose Image
+              Картинка
             </label>
           </button>
           <input
+            disabled={!connected}
             type="file"
             id="fileInput"
             accept="image/*"
@@ -182,15 +195,3 @@ export const Chat: FC<{
   );
 };
 
-const formateFileSize = (bytes: number) => {
-  if (bytes < 1_024) return bytes + 'B';
-
-  const kilo = Math.floor(bytes / 1_024);
-  if (kilo < 1_024) return kilo + 'KB';
-
-  const mega = Math.floor(kilo / 1_024);
-  if (mega < 1_024) return mega + 'MB';
-
-  const gigo = Math.floor(mega / 1_024);
-  return gigo + 'GB';
-};

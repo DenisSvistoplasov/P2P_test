@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { P2P } from './api/p2p';
-import { Server } from './api/server';
 import { Initializer } from './Initializer';
+import { Toaster } from './components/Toaster';
 
 export default function App() {
   // const [value, setValue] = useState('');
@@ -82,56 +82,9 @@ export default function App() {
   // };
 
   return (
-    <Initializer />
-    //     style={{ marginBottom: 10 }}
-    //     type="text"
-    //     value={value}
-    //     placeholder='Your message'
-    //     onChange={(e) => setValue(e.target.value)}
-    //   />
-
-    //   <div style={{ marginBottom: 10 }}>
-    //     <button onClick={onCreateOfferClick}>
-    //       {isLoading.createOffer ? 'Creating...' : 'Create offer'}
-    //     </button>
-    //     <button onClick={onCreateAnswerClick}>
-    //       {isLoading.createAnswer ? 'Creating...' : 'Create answer'}
-    //     </button>
-    //     <button onClick={onGetAnswerClick}>
-    //       {isLoading.getAnswer ? 'Getting...' : 'Get answer'}
-    //     </button>
-    //     <button onClick={sendMessage} disabled={!channel}>
-    //       Send message
-    //     </button>
-    //   </div>
-
-    //   <div style={{display: 'grid', gridTemplateColumns:'1fr 1fr', gap:10, maxWidth: 500, margin: '0 auto'}}>
-    //     <div>
-    //       <div>Messages:</div>
-    //       <div
-    //         style={{
-    //           border: '1px solid',
-    //           padding: 10,
-    //           width: 'fit-content',
-    //           minWidth: 100,
-    //           margin: '0 auto 10px',
-    //         }}
-    //       >
-    //         {messages.map((message, i) => (
-    //           <div key={i + message}>{message}</div>
-    //         ))}
-    //       </div>
-    //     </div>
-
-    //     <div>
-    //       <div>Logs:</div>
-    //       <ul>
-    //         {logs.map((log, i) => (
-    //           <li key={i + log}>{log}</li>
-    //         ))}
-    //       </ul>
-    //     </div>
-    //   </div>
-    // </div>
+    <>
+      <Initializer />
+      <Toaster />
+    </>
   );
 }

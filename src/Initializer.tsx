@@ -336,17 +336,47 @@ export const Initializer = () => {
   }, [localStream, currentPairId]);
 
   return (
-    <div>
-      <div>WebSocket status: {wsStatus}</div>
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        width: '100%',
+        height: '100dvh',
+        padding: 10,
+        overflow: 'hidden',
+      }}
+    >
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          marginBottom: 20,
+        }}
+      >
+        {!userId ? <div>Loading...</div> : <h1 style={{fontSize: 'calc(13px + 1.5vw)'}}>Current user: {userId}</h1>}
+        <div>WebSocket status: {wsStatus}</div>
+      </div>
 
-      {!userId ? (
-        <div>Loading...</div>
-      ) : (
+      {userId && (
         <>
-          <h1>Current user: {userId}</h1>
-          <div style={{ display: 'flex', gap: '5%', width: '100%' }}>
-            <div style={{ width: '10%', minWidth: 100 }}>
-              <h2>Users</h2>
+          <div
+            style={{
+              display: 'flex',
+              gap: '5%',
+              width: '100%',
+              flex: '1 1',
+              overflow: 'hidden',
+            }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                width: '10%',
+                minWidth: 100,
+              }}
+            >
+              <h2 style={{ marginBottom: 10, fontSize: 'calc(12px + 1vw)' }}>Users</h2>
               {pairIds.length > 0 ? (
                 <ul
                   style={{
@@ -356,6 +386,7 @@ export const Initializer = () => {
                     listStyle: 'none',
                     margin: 0,
                     padding: 0,
+                    overflow: 'auto',
                   }}
                 >
                   {pairIds.map((pairId) => (
@@ -384,10 +415,18 @@ export const Initializer = () => {
               )}
             </div>
 
-            <div style={{ flexGrow: 1, flexShrink: 1, overflow: 'hidden' }}>
-              <h2>Chat</h2>
+            <div
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                flexGrow: 1,
+                flexShrink: 1,
+                overflow: 'hidden',
+              }}
+            >
+              <h2 style={{ marginBottom: 10,  fontSize: 'calc(12px + 1vw)' }}>Chat</h2>
               {currentPairId ? (
-                <div>
+                <>
                   <Chat
                     interlocutorId={
                       currentPairId.split('_vs_').find((id) => id != userId)!
@@ -448,6 +487,7 @@ export const Initializer = () => {
                                     display: 'flex',
                                     justifyContent: 'center',
                                     alignItems: 'center',
+                                    width: '49%',
                                   }}
                                 >
                                   <p
@@ -467,13 +507,13 @@ export const Initializer = () => {
                             <p style={{ margin: '0 0 5px 0', fontSize: 14 }}>
                               Собеседник
                             </p>
-                            <VideoPlayer stream={remoteStream} />
+                            <VideoPlayer stream={remoteStream} isOwner={false} />
                           </div>
                         )}
                       </div>
                     </div>
                   )}
-                </div>
+                </>
               ) : (
                 pairIds.length > 0 && <span>Select user</span>
               )}

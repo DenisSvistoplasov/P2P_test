@@ -2,3 +2,8 @@ declare module '*.mp3' {
   const src: string;
   export default src;
 }
+
+declare module '*.css' {
+  const content: any;
+  export default content;
+}
