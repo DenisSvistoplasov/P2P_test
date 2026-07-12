@@ -3,7 +3,6 @@ import { useRef, useEffect, useState } from 'react';
 export const VideoPlayer = ({
   stream,
   muted,
-  isOwner = true,
 }: {
   stream: MediaStream;
   muted?: boolean;
