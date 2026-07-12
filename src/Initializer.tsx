@@ -353,7 +353,13 @@ export const Initializer = () => {
           marginBottom: 20,
         }}
       >
-        {!userId ? <div>Loading...</div> : <h1 style={{fontSize: 'calc(13px + 1.5vw)'}}>Current user: {userId}</h1>}
+        {!userId ? (
+          <div>Loading...</div>
+        ) : (
+          <h1 style={{ fontSize: 'calc(13px + 1.5vw)' }}>
+            Current user: {userId}
+          </h1>
+        )}
         <div>WebSocket status: {wsStatus}</div>
       </div>
 
@@ -376,7 +382,9 @@ export const Initializer = () => {
                 minWidth: 100,
               }}
             >
-              <h2 style={{ marginBottom: 10, fontSize: 'calc(12px + 1vw)' }}>Users</h2>
+              <h2 style={{ marginBottom: 10, fontSize: 'calc(12px + 1vw)' }}>
+                Users
+              </h2>
               {pairIds.length > 0 ? (
                 <ul
                   style={{
@@ -424,7 +432,9 @@ export const Initializer = () => {
                 overflow: 'hidden',
               }}
             >
-              <h2 style={{ marginBottom: 10,  fontSize: 'calc(12px + 1vw)' }}>Chat</h2>
+              <h2 style={{ marginBottom: 10, fontSize: 'calc(12px + 1vw)' }}>
+                Chat
+              </h2>
               {currentPairId ? (
                 <>
                   <Chat
@@ -436,11 +446,12 @@ export const Initializer = () => {
                     sendText={sendText}
                     sendFile={sendFile}
                   />
+
                   {pairsState[currentPairId] === 3 && (
                     <div>
                       {videoCallStatus === 'incoming' && <p>Входящий звонок</p>}
                       <div
-                        style={{ display: 'flex', gap: 10, marginBottom: 10 }}
+                        style={{ display: 'flex', gap: 20, marginBottom: 10, padding: 20 }}
                       >
                         {videoCallStatus === 'off' && (
                           <PhoneButton type="call" onClick={joinVideoCall} />
@@ -507,7 +518,7 @@ export const Initializer = () => {
                             <p style={{ margin: '0 0 5px 0', fontSize: 14 }}>
                               Собеседник
                             </p>
-                            <VideoPlayer stream={remoteStream} isOwner={false} />
+                            <VideoPlayer stream={remoteStream} />
                           </div>
                         )}
                       </div>
