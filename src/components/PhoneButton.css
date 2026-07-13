@@ -31,15 +31,14 @@
   border: 1px solid #0c0;
   border-radius: 50%;
   box-shadow: 0 0 2px #0c0, inset 0 0 2px #0c0;
-  /* transform: scale(1.5); */
-  animation: circle1 1.2s infinite linear;
+  animation: circleWave 1.2s infinite linear;
 }
 
 .phone-button.answer::after{
   animation-delay: .4s;
 }
 
-@keyframes circle1 {
+@keyframes circleWave {
   0% {
     transform: scale(1);
     opacity: .9;

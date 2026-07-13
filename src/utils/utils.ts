@@ -32,3 +32,7 @@ export const formateFileSize = (bytes: number) => {
   const gigo = Math.floor(mega / 1_024);
   return gigo + 'GB';
 };
+
+export const formateCount = (n: number) => {
+  return n < 10 ? n + '' : '9+';
+}

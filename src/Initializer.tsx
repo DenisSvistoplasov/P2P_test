@@ -15,6 +15,7 @@ import { WsStatus } from './server/webSocket';
 import { PhoneButton } from './components/PhoneButton';
 import { usePlayIncomingCallRing } from './hooks/usePlayIncomingCallRing';
 import { useWsClient } from './hooks/useWsClient';
+import { CallingPhoneIcon } from './components/icons/CallingPhoneIcon';
 
 type PairState = 0 | 1 | 2 | 3;
 type VideoCallStatus = 'off' | 'incoming' | 'outgoing' | 'on';
@@ -28,16 +29,24 @@ export const Initializer = () => {
   const [messagesMap, setMessagesMap] = useState<Record<string, Message[]>>({}); // pairId : Message[]
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
-  const [videoCallStatus, setVideoCallStatus] =
-    useState<VideoCallStatus>('off');
+  const [videoCallStatus, setVideoCallStatus] = useState<
+    Record<string, VideoCallStatus>
+  >({});
+  const [unreadMessagesCount, setUnreadMessagesCount] = useState<
+    Record<string, number>
+  >({});
 
   const userIdRef = useRef(userId);
-  const wsRef = useRef<P2pWsClient | null>(null);
+  const currentPairIdRef = useRef(currentPairId);
   const p2pInstancesRef = useRef<Record<string, P2pSession>>({});
 
   const ws = useWsClient();
 
   const pairIds = useMemo(() => pairs.map((pair) => pair.pairId), [pairs]);
+  const currentVideoCallStatus = useMemo(
+    () => videoCallStatus[currentPairId] || 'off',
+    [videoCallStatus, currentPairId],
+  );
 
   const pairsState = useMemo(() => {
     const map: Record<string, PairState> = {};
@@ -54,7 +63,7 @@ export const Initializer = () => {
     usePlayIncomingCallRing();
 
   useEffect(() => {
-    if (videoCallStatus === 'incoming') playIncomingCallRing();
+    if (Object.values(videoCallStatus).includes('incoming')) playIncomingCallRing();
     else stopIncomingCallRing();
   }, [videoCallStatus, playIncomingCallRing, stopIncomingCallRing]);
 
@@ -64,6 +73,81 @@ export const Initializer = () => {
   );
   const setAnswer = useCallback(
     (data: SetAnswerBody) => ws.send({ type: 'setAnswer', payload: data }),
+    [],
+  );
+
+  const handleNewMessage = useCallback((pairId: string, message?: Message) => {
+    setMessagesMap((prev) => ({
+      ...prev,
+      [pairId]: message ? [...prev[pairId], message] : prev[pairId] || [],
+    }));
+    if (message && pairId !== currentPairIdRef.current) {
+      setUnreadMessagesCount((prev) => ({
+        ...prev,
+        [pairId]: prev[pairId] ? prev[pairId] + 1 : 1,
+      }));
+    }
+  }, []);
+
+  const handleVideoCallStatus = useCallback(
+    (
+      pairId: string,
+      setStatus: (prevStatus: VideoCallStatus) => VideoCallStatus,
+    ) => {
+      setVideoCallStatus((prev) => {
+        const prevStatus = prev[pairId] || 'off';
+        const newStatus = setStatus(prevStatus);
+        if (prevStatus !== 'on' && newStatus === 'on') {
+          setMessagesMap((messagesMap) => ({
+            ...messagesMap,
+            [pairId]: [
+              ...messagesMap[pairId],
+              { type: 'callInfo', start: true, timestamp: Date.now() },
+            ],
+          }));
+        }
+        if (prevStatus !== 'off' && newStatus === 'off') {
+          const now = Date.now();
+          setMessagesMap((messagesMap) => {
+            if (!messagesMap[pairId]?.length) {
+              return messagesMap;
+            }
+
+            let callStartMessage: CallInfoMessage | undefined;
+
+            for (let i = messagesMap[pairId].length - 1; i >= 0; i--) {
+              const message = messagesMap[pairId][i];
+              if (message.type === 'callInfo') {
+                if (message.start) callStartMessage = message;
+                break;
+              }
+            }
+
+            if (!callStartMessage) {
+              return messagesMap;
+            }
+
+            return {
+              ...messagesMap,
+              [pairId]: [
+                ...messagesMap[pairId],
+                {
+                  type: 'callInfo',
+                  start: false,
+                  timestamp: now,
+                  duration: now - callStartMessage.timestamp,
+                },
+              ],
+            };
+          });
+        }
+
+        return {
+          ...prev,
+          [pairId]: newStatus,
+        };
+      });
+    },
     [],
   );
 
@@ -78,10 +162,10 @@ export const Initializer = () => {
           setOffer,
           setAnswer,
           setP2pChannels,
-          setMessagesMap,
+          handleNewMessage,
           setRemoteStream,
           setLocalStream,
-          setVideoCallStatus,
+          handleVideoCallStatus,
         });
       }
     });
@@ -108,10 +192,10 @@ export const Initializer = () => {
             setOffer,
             setAnswer,
             setP2pChannels,
-            setMessagesMap,
+            handleNewMessage,
             setRemoteStream,
             setLocalStream,
-            setVideoCallStatus,
+            handleVideoCallStatus,
           });
         });
       }
@@ -136,11 +220,11 @@ export const Initializer = () => {
           setOffer,
           setAnswer,
           p2pInstancesRef,
-          setMessagesMap,
+          handleNewMessage,
           setP2pChannels,
           setRemoteStream,
           setLocalStream,
-          setVideoCallStatus,
+          handleVideoCallStatus,
         });
       }
 
@@ -155,7 +239,7 @@ export const Initializer = () => {
             pair.pairId === pairId ? { ...pair, offer } : pair,
           ),
         );
-        const [senderId, receiverId] = pairId.split('_vs_');
+        const [, receiverId] = pairId.split('_vs_');
         if (userIdRef.current === receiverId) {
           p2pInstance.applySignal(offer);
         }
@@ -208,52 +292,14 @@ export const Initializer = () => {
     return () => ws.disconnect();
   }, []);
 
-  useEffect(() => {
-    if (videoCallStatus === 'on') {
-      setMessagesMap((messagesMap) => ({
-        ...messagesMap,
-        [currentPairId]: [
-          ...messagesMap[currentPairId],
-          { type: 'callInfo', start: true, timestamp: Date.now() },
-        ],
-      }));
-    }
-    if (videoCallStatus === 'off') {
-      const now = Date.now();
-      setMessagesMap((messagesMap) => {
-        if (!messagesMap[currentPairId]?.length) {
-          return messagesMap;
-        }
-
-        let callStartMessage: CallInfoMessage | undefined;
-
-        for (let i = messagesMap[currentPairId].length - 1; i >= 0; i--) {
-          const message = messagesMap[currentPairId][i];
-          if (message.type === 'callInfo') {
-            if (message.start) callStartMessage = message;
-            break;
-          }
-        }
-
-        if (!callStartMessage) {
-          return messagesMap;
-        }
-
-        return {
-          ...messagesMap,
-          [currentPairId]: [
-            ...messagesMap[currentPairId],
-            {
-              type: 'callInfo',
-              start: false,
-              timestamp: now,
-              duration: now - callStartMessage.timestamp,
-            },
-          ],
-        };
-      });
-    }
-  }, [videoCallStatus, currentPairId]);
+  const onPairClick = useCallback((pairId: string) => {
+    setCurrentPairId(pairId);
+    currentPairIdRef.current = pairId;
+    setUnreadMessagesCount((prev) => ({
+      ...prev,
+      [pairId]: 0,
+    }));
+  }, []);
 
   const sendText = useCallback(
     (text: string) => {
@@ -310,15 +356,33 @@ export const Initializer = () => {
 
     if (!session) return console.error('Сессия не найдена для звонка');
 
-    setVideoCallStatus((status) =>
-      status === 'off' ? 'outgoing' : status === 'incoming' ? 'on' : status,
-    );
+    setVideoCallStatus((statusMap) => {
+      const prevStatus = statusMap[currentPairId] || 'off';
+      return {
+        ...statusMap,
+        [currentPairId]:
+          prevStatus === 'off'
+            ? 'outgoing'
+            : prevStatus === 'incoming'
+              ? 'on'
+              : prevStatus,
+      };
+    });
 
     session.addCameraStream().then((stream) => {
       if (!stream) {
-        setVideoCallStatus((status) =>
-          status === 'outgoing' ? 'off' : status === 'on' ? 'incoming' : status,
-        );
+        setVideoCallStatus((statusMap) => {
+          const prevStatus = statusMap[currentPairId] || 'off';
+          return {
+            ...statusMap,
+            [currentPairId]:
+              prevStatus === 'outgoing'
+                ? 'off'
+                : prevStatus === 'on'
+                  ? 'incoming'
+                  : prevStatus,
+          };
+        });
         return console.error('Поток не нашелся');
       }
 
@@ -379,7 +443,7 @@ export const Initializer = () => {
                 display: 'flex',
                 flexDirection: 'column',
                 width: '10%',
-                minWidth: 100,
+                minWidth: 130,
               }}
             >
               <h2 style={{ marginBottom: 10, fontSize: 'calc(12px + 1vw)' }}>
@@ -393,27 +457,72 @@ export const Initializer = () => {
                     gap: 10,
                     listStyle: 'none',
                     margin: 0,
-                    padding: 0,
-                    overflow: 'auto',
+                    padding: 5,
+                    overflowY: 'auto',
+                    overflowX: 'hidden',
                   }}
                 >
                   {pairIds.map((pairId) => (
                     <li key={pairId}>
                       <button
-                        onClick={() => setCurrentPairId(pairId)}
+                        onClick={() => onPairClick(pairId)}
                         style={{
+                          position: 'relative',
+                          display: 'flex',
+                          justifyContent: 'center',
+                          alignItems: 'center',
+                          height: 40,
                           backgroundColor: ['#ccc', '#cc6', '#5df', '#6f7'][
                             pairsState[pairId]
                           ],
-                          cursor: 'pointer',
-                          padding: 10,
+                          cursor:
+                            currentPairId === pairId ? 'default' : 'pointer',
+                          padding: '10px 20px',
                           width: '100%',
                           borderRadius: 5,
                           border: 'none',
-                          boxShadow: 'inset -2px -2px 5px rgba(0, 0, 0, 0.2)',
+                          boxShadow:
+                            currentPairId === pairId
+                              ? 'inset 2px 2px 5px rgba(0, 0, 0, 0.2), inset -4px -4px 12px rgba(255, 255, 255, 0.4)'
+                              : 'inset -3px -3px 5px rgba(0, 0, 0, 0.2), inset 2px 2px 5px rgba(255, 255, 255, 0.4), 2px 2px 6px rgba(0, 0, 0, 0.2)',
                         }}
                       >
                         {pairId.split('_vs_').find((id) => id !== userId)}
+
+                        {videoCallStatus[pairId] === 'incoming' &&
+                        currentPairId !== pairId ? (
+                          <div
+                            style={{
+                              position: 'absolute',
+                              top: -3,
+                              right: -3,
+                            }}
+                          >
+                            <CallingPhoneIcon />
+                          </div>
+                        ) : (
+                          unreadMessagesCount[pairId] > 0 && (
+                            <div
+                              style={{
+                                position: 'absolute',
+                                top: -3,
+                                right: -3,
+                                display: 'flex',
+                                justifyContent: 'center',
+                                alignItems: 'center',
+                                width: 20,
+                                aspectRatio: 1,
+                                backgroundColor: 'red',
+                                fontSize: 12,
+                                color: 'white',
+                                borderRadius: '50%',
+                                textShadow: '0 0 2px #00000055',
+                              }}
+                            >
+                              {unreadMessagesCount[pairId]}
+                            </div>
+                          )
+                        )}
                       </button>
                     </li>
                   ))}
@@ -449,17 +558,24 @@ export const Initializer = () => {
 
                   {pairsState[currentPairId] === 3 && (
                     <div>
-                      {videoCallStatus === 'incoming' && <p>Входящий звонок</p>}
+                      {currentVideoCallStatus === 'incoming' && (
+                        <p>Входящий звонок</p>
+                      )}
                       <div
-                        style={{ display: 'flex', gap: 20, marginBottom: 10, padding: 20 }}
+                        style={{
+                          display: 'flex',
+                          gap: 20,
+                          marginBottom: 10,
+                          padding: 20,
+                        }}
                       >
-                        {videoCallStatus === 'off' && (
+                        {currentVideoCallStatus === 'off' && (
                           <PhoneButton type="call" onClick={joinVideoCall} />
                         )}
-                        {videoCallStatus === 'incoming' && (
+                        {currentVideoCallStatus === 'incoming' && (
                           <PhoneButton type="answer" onClick={joinVideoCall} />
                         )}
-                        {videoCallStatus !== 'off' && (
+                        {currentVideoCallStatus !== 'off' && (
                           <PhoneButton type="hangup" onClick={endVideoCall} />
                         )}
                       </div>
@@ -470,7 +586,7 @@ export const Initializer = () => {
                           justifyContent: 'space-between',
                         }}
                       >
-                        {videoCallStatus === 'outgoing' &&
+                        {currentVideoCallStatus === 'outgoing' &&
                           !localStream &&
                           !remoteStream && (
                             <p
@@ -492,7 +608,7 @@ export const Initializer = () => {
                             </div>
 
                             {!remoteStream &&
-                              videoCallStatus === 'outgoing' && (
+                              currentVideoCallStatus === 'outgoing' && (
                                 <div
                                   style={{
                                     display: 'flex',
@@ -513,7 +629,7 @@ export const Initializer = () => {
                               )}
                           </>
                         )}
-                        {remoteStream && videoCallStatus === 'on' && (
+                        {remoteStream && currentVideoCallStatus === 'on' && (
                           <div style={{ width: '49%' }}>
                             <p style={{ margin: '0 0 5px 0', fontSize: 14 }}>
                               Собеседник
@@ -551,10 +667,10 @@ function initiateP2P({
   setOffer,
   setAnswer,
   setP2pChannels,
-  setMessagesMap,
+  handleNewMessage,
   setRemoteStream,
   setLocalStream,
-  setVideoCallStatus,
+  handleVideoCallStatus,
 }: {
   pair: Pair;
   userId: string;
@@ -562,12 +678,13 @@ function initiateP2P({
   setOffer: (data: SetOfferBody) => void;
   setAnswer: (data: SetAnswerBody) => void;
   setP2pChannels: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
-  setMessagesMap: React.Dispatch<
-    React.SetStateAction<Record<string, Message[]>>
-  >;
+  handleNewMessage: (pairId: string, message?: Message) => void;
   setRemoteStream: React.Dispatch<React.SetStateAction<MediaStream | null>>;
   setLocalStream: React.Dispatch<React.SetStateAction<MediaStream | null>>;
-  setVideoCallStatus: React.Dispatch<React.SetStateAction<VideoCallStatus>>;
+  handleVideoCallStatus: (
+    pairId: string,
+    setStatus: (status: VideoCallStatus) => VideoCallStatus,
+  ) => void;
 }) {
   const pairId = pair.pairId;
   const isInitiator = userId === pair.senderId;
@@ -607,7 +724,7 @@ function initiateP2P({
           console.log('p2p disconnected');
           setLocalStream(null);
           setRemoteStream(null);
-          setVideoCallStatus('off');
+          handleVideoCallStatus(pairId, () => 'off');
           delete next[pairId];
         }
         return next;
@@ -619,33 +736,24 @@ function initiateP2P({
 
     // Ловим чистый текст от собеседника и пушим в стейт сообщений
     onTextMessage: (text) => {
-      setMessagesMap((prev) => ({
-        ...prev,
-        [pairId]: [...(prev[pairId] || []), { type: 'text', text }],
-      }));
+      handleNewMessage(pairId, { type: 'text', text });
     },
 
     // Ловим уже полностью собранную картинку (готовый blob-url)
     onImageMessage: (url, name, mime, size) => {
-      setMessagesMap((prev) => ({
-        ...prev,
-        [pairId]: [
-          ...(prev[pairId] || []),
-          { type: 'image', url, name, mime, size },
-        ],
-      }));
+      handleNewMessage(pairId, { type: 'image', url, name, mime, size });
     },
 
     onIncomingStream: (remoteStream) => {
-      setVideoCallStatus((videoCallStatus) => {
-        console.log('onIncomingStream. videoCallStatus: ', videoCallStatus);
-        if (videoCallStatus === 'off') {
+      handleVideoCallStatus(pairId, (status) => {
+        console.log('onIncomingStream. prev videoCallStatus: ', status);
+        if (status === 'off') {
           return 'incoming';
         }
-        if (videoCallStatus === 'outgoing') {
+        if (status === 'outgoing') {
           return 'on';
         }
-        return videoCallStatus;
+        return status;
       });
 
       setRemoteStream(remoteStream);
@@ -654,7 +762,7 @@ function initiateP2P({
     onEndVideoCall: () => {
       setLocalStream(null);
       setRemoteStream(null);
-      setVideoCallStatus('off');
+      handleVideoCallStatus(pairId, () => 'off');
     },
   });
 
@@ -662,10 +770,7 @@ function initiateP2P({
   p2pInstancesRef.current[pairId] = p2pInstance;
 
   // 3. Инициализируем пустой массив сообщений для этой пары
-  setMessagesMap((messagesMap) => ({
-    ...messagesMap,
-    [pairId]: messagesMap[pairId] || [],
-  }));
+  handleNewMessage(pairId);
 
   return p2pInstance;
 }
