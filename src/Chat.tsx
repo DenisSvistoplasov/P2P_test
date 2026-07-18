@@ -1,12 +1,13 @@
 import { FC, useEffect, useRef, useState } from 'react';
-import { formateFileSize, formateTimeDuration } from './utils/utils';
+import { formateTimeDuration } from './utils/utils';
+import { ImageMessage } from './ImageMessage';
 
 export type TextMessage = {
   type: 'text';
   text: string;
   isOwner?: boolean;
 };
-export type ImageMessage = {
+export type ImageMessageType = {
   type: 'image';
   name: string;
   mime: string;
@@ -21,7 +22,7 @@ export type CallInfoMessage = {
   duration?: number; // ms
 };
 
-export type Message = TextMessage | ImageMessage | CallInfoMessage;
+export type Message = TextMessage | ImageMessageType | CallInfoMessage;
 
 export const Chat: FC<{
   interlocutorId: string;
@@ -40,10 +41,11 @@ export const Chat: FC<{
     }
   }, [messages.length]);
 
-  const onFileFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const onFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file && connected) {
       sendFile(file);
+      event.target.value = '';
     }
   };
 
@@ -101,31 +103,7 @@ export const Chat: FC<{
               {message.type === 'text' ? (
                 <span style={{ fontFamily: 'sans-serif' }}>{message.text}</span>
               ) : message.type === 'image' ? (
-                <div>
-                  <img
-                    src={message.url}
-                    style={{
-                      width: '100%',
-                      aspectRatio: '4/3',
-                      objectFit: 'contain',
-                    }}
-                  />
-                  <p
-                    style={{
-                      fontSize: 10,
-                      color: '#555',
-                      margin: 0,
-                      whiteSpace: 'nowrap',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                    }}
-                  >
-                    {message.name}
-                  </p>
-                  <p style={{ margin: 0, fontSize: 10, color: '#555' }}>
-                    size: {formateFileSize(message.size)}
-                  </p>
-                </div>
+                <ImageMessage {...message} />
               ) : (
                 <span>
                   {message.start ? 'Call started' : 'Call ended'} at{' '}
@@ -177,6 +155,7 @@ export const Chat: FC<{
 
           <button
             style={{ padding: '8px 16px', fontSize: 14, cursor: 'pointer' }}
+            disabled={!connected}
           >
             <label htmlFor="fileInput" style={{ cursor: 'pointer' }}>
               Картинка
@@ -188,7 +167,7 @@ export const Chat: FC<{
             id="fileInput"
             accept="image/*"
             multiple={false}
-            onChange={onFileFileChange}
+            onChange={onFileChange}
             style={{ display: 'none' }}
           />
         </div>
