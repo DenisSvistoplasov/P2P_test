@@ -138,7 +138,6 @@ export const Chat: FC<{
           }}
           style={{
             flexGrow: 1,
-            minWidth: 200,
             minHeight: 40,
             fontSize: 14,
             padding: 8,

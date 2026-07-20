@@ -2,11 +2,11 @@ import './CallingPhoneIcon.css';
 
 export const CallingPhoneIcon = () => {
   return (
-    <div className="CallingPhoneIcon" style={{ width: 20, height: 20, borderRadius: '50%', backgroundColor: '#f00' }}>
+    <div className="CallingPhoneIcon" style={{display: 'flex', justifyContent: 'center', alignItems: 'center', width: 18, height: 18, borderRadius: '50%', backgroundColor: '#f00' }}>
       <svg
         xmlns="http://www.w3.org/2000/svg"
-        width="20"
-        height="20"
+        width="16"
+        height="16"
         viewBox="0 0 0.6 0.6"
         fill="none"
       >

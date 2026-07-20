@@ -457,7 +457,7 @@ export const Initializer = () => {
                     gap: 10,
                     listStyle: 'none',
                     margin: 0,
-                    padding: 5,
+                    padding: 6,
                     overflowY: 'auto',
                     overflowX: 'hidden',
                   }}

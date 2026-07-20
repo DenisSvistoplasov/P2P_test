@@ -30,6 +30,7 @@ export const VideoPlayer = ({
           position: 'fixed',
           top: 0,
           left: 0,
+          zIndex: 1,
           width: '100%',
           height: '100%',
           borderRadius: 0,
@@ -44,7 +45,8 @@ export const VideoPlayer = ({
         style={{
           width: '100%',
           height: '100%',
-          objectFit: 'cover',
+          objectFit: 'contain',
+          backgroundColor: '#333',
         }}
       />
       <div

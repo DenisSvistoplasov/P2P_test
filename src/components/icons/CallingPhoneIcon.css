@@ -8,19 +8,19 @@
   }
 
   10% {
-    transform: rotate(13deg) scale(1.05);
+    transform: rotate(11deg) scale(1.1);
   }
 
   30% {
-    transform: rotate(-13deg) scale(1.15);
+    transform: rotate(-11deg) scale(1.2);
   }
 
   50% {
-    transform: rotate(13deg) scale(1.15);
+    transform: rotate(11deg) scale(1.2);
   }
 
   70% {
-    transform: rotate(-13deg) scale(1.05);
+    transform: rotate(-11deg) scale(1.1);
   }
 
   80%,
