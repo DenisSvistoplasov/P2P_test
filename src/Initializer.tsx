@@ -35,6 +35,9 @@ export const Initializer = () => {
   const [unreadMessagesCount, setUnreadMessagesCount] = useState<
     Record<string, number>
   >({});
+  const [videoCallFullscreen, setVideoCallFullscreen] = useState<
+    'off' | 'local' | 'remote'
+  >('off');
 
   const userIdRef = useRef(userId);
   const currentPairIdRef = useRef(currentPairId);
@@ -153,6 +156,7 @@ export const Initializer = () => {
       if (prevStatus !== 'off' && !is) {
         newStatus = 'off';
         addEndVideoCallMessage(pairId);
+        setVideoCallFullscreen('off');
       }
 
       return {
@@ -581,7 +585,7 @@ export const Initializer = () => {
                           <PhoneButton type="answer" onClick={joinVideoCall} />
                         )}
                         {currentVideoCallStatus !== 'off' && (
-                          <PhoneButton type="hangup" onClick={endVideoCall} />
+                          <PhoneButton type="hangup" onClick={endVideoCall} style={{ ...(videoCallFullscreen !== 'off' && { position: 'fixed', bottom: 20, right: 20, zIndex: 999, boxShadow: '0 0 8px rgba(0, 0, 0, 0.7)' })}} />
                         )}
                       </div>
 
@@ -609,7 +613,22 @@ export const Initializer = () => {
                               <p style={{ margin: '0 0 5px 0', fontSize: 14 }}>
                                 Вы
                               </p>
-                              <VideoPlayer stream={localStream} muted />
+                              <VideoPlayer
+                                stream={localStream}
+                                muted
+                                position={
+                                  videoCallFullscreen === 'off'
+                                    ? 'normal'
+                                    : videoCallFullscreen === 'local'
+                                      ? 'fullscreen'
+                                      : 'corner'
+                                }
+                                toggleFullScreen={() =>
+                                  setVideoCallFullscreen((prev) =>
+                                    prev === 'local' ? 'off' : 'local',
+                                  )
+                                }
+                              />
                             </div>
 
                             {!remoteStream &&
@@ -639,7 +658,21 @@ export const Initializer = () => {
                             <p style={{ margin: '0 0 5px 0', fontSize: 14 }}>
                               Собеседник
                             </p>
-                            <VideoPlayer stream={remoteStream} />
+                            <VideoPlayer
+                              stream={remoteStream}
+                              position={
+                                  videoCallFullscreen === 'off'
+                                    ? 'normal'
+                                    : videoCallFullscreen === 'remote'
+                                      ? 'fullscreen'
+                                      : 'corner'
+                                }
+                              toggleFullScreen={() =>
+                                setVideoCallFullscreen((prev) =>
+                                  prev === 'remote' ? 'off' : 'remote',
+                                )
+                              }
+                            />
                           </div>
                         )}
                       </div>
