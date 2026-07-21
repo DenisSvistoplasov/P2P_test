@@ -57,7 +57,15 @@ export const Chat: FC<{
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 10,  marginBottom: 10, overflow: 'hidden' }}>
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 10,
+        marginBottom: 10,
+        overflow: 'hidden',
+      }}
+    >
       <div>Chat with user: {interlocutorId}</div>
 
       {messages.length > 0 && (
@@ -84,7 +92,7 @@ export const Chat: FC<{
                     : message.isOwner
                       ? 'flex-end'
                       : 'flex-start',
-                maxWidth: '60%',
+                maxWidth: message.type === 'callInfo' ? '80%' : '60%',
                 backgroundColor:
                   message.type === 'callInfo'
                     ? 'lightgray'
@@ -105,7 +113,7 @@ export const Chat: FC<{
               ) : message.type === 'image' ? (
                 <ImageMessage {...message} />
               ) : (
-                <span>
+                <div style={{fontSize: 10, textAlign: 'center'}}>
                   {message.start ? 'Call started' : 'Call ended'} at{' '}
                   {new Date(message.timestamp).toLocaleTimeString([], {
                     hour: '2-digit',
@@ -115,7 +123,7 @@ export const Chat: FC<{
                   {message.duration && (
                     <> Duration:&nbsp;{formateTimeDuration(message.duration)}</>
                   )}
-                </span>
+                </div>
               )}
             </li>
           ))}
@@ -174,4 +182,3 @@ export const Chat: FC<{
     </div>
   );
 };
-

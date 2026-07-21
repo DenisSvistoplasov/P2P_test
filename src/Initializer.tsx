@@ -63,7 +63,8 @@ export const Initializer = () => {
     usePlayIncomingCallRing();
 
   useEffect(() => {
-    if (Object.values(videoCallStatus).includes('incoming')) playIncomingCallRing();
+    if (Object.values(videoCallStatus).includes('incoming'))
+      playIncomingCallRing();
     else stopIncomingCallRing();
   }, [videoCallStatus, playIncomingCallRing, stopIncomingCallRing]);
 
@@ -89,67 +90,77 @@ export const Initializer = () => {
     }
   }, []);
 
-  const handleVideoCallStatus = useCallback(
-    (
-      pairId: string,
-      setStatus: (prevStatus: VideoCallStatus) => VideoCallStatus,
-    ) => {
-      setVideoCallStatus((prev) => {
-        const prevStatus = prev[pairId] || 'off';
-        const newStatus = setStatus(prevStatus);
-        if (prevStatus !== 'on' && newStatus === 'on') {
-          setMessagesMap((messagesMap) => ({
-            ...messagesMap,
-            [pairId]: [
-              ...messagesMap[pairId],
-              { type: 'callInfo', start: true, timestamp: Date.now() },
-            ],
-          }));
+  const addStartVideoCallMessage = useCallback((pairId: string) => {
+    setMessagesMap((messagesMap) => ({
+      ...messagesMap,
+      [pairId]: [
+        ...messagesMap[pairId],
+        { type: 'callInfo', start: true, timestamp: Date.now() },
+      ],
+    }));
+  }, []);
+
+  const addEndVideoCallMessage = useCallback((pairId: string) => {
+    const now = Date.now();
+    setMessagesMap((messagesMap) => {
+      if (!messagesMap[pairId]?.length) {
+        return messagesMap;
+      }
+
+      let callStartMessage: CallInfoMessage | undefined;
+
+      for (let i = messagesMap[pairId].length - 1; i >= 0; i--) {
+        const message = messagesMap[pairId][i];
+        if (message.type === 'callInfo') {
+          if (message.start) callStartMessage = message;
+          break;
         }
-        if (prevStatus !== 'off' && newStatus === 'off') {
-          const now = Date.now();
-          setMessagesMap((messagesMap) => {
-            if (!messagesMap[pairId]?.length) {
-              return messagesMap;
-            }
+      }
 
-            let callStartMessage: CallInfoMessage | undefined;
+      if (!callStartMessage) {
+        return messagesMap;
+      }
 
-            for (let i = messagesMap[pairId].length - 1; i >= 0; i--) {
-              const message = messagesMap[pairId][i];
-              if (message.type === 'callInfo') {
-                if (message.start) callStartMessage = message;
-                break;
-              }
-            }
+      return {
+        ...messagesMap,
+        [pairId]: [
+          ...messagesMap[pairId],
+          {
+            type: 'callInfo',
+            start: false,
+            timestamp: now,
+            duration: now - callStartMessage.timestamp,
+          },
+        ],
+      };
+    });
+  }, []);
 
-            if (!callStartMessage) {
-              return messagesMap;
-            }
+  const onRemoteStreamChange = useCallback((pairId: string, is: boolean) => {
+    setVideoCallStatus((prev) => {
+      const prevStatus = prev[pairId] || 'off';
+      let newStatus = prevStatus;
 
-            return {
-              ...messagesMap,
-              [pairId]: [
-                ...messagesMap[pairId],
-                {
-                  type: 'callInfo',
-                  start: false,
-                  timestamp: now,
-                  duration: now - callStartMessage.timestamp,
-                },
-              ],
-            };
-          });
-        }
+      if (prevStatus === 'off' && is) {
+        newStatus = 'incoming';
+      }
 
-        return {
-          ...prev,
-          [pairId]: newStatus,
-        };
-      });
-    },
-    [],
-  );
+      if (prevStatus === 'outgoing' && is) {
+        newStatus = 'on';
+        addStartVideoCallMessage(pairId);
+      }
+
+      if (prevStatus !== 'off' && !is) {
+        newStatus = 'off';
+        addEndVideoCallMessage(pairId);
+      }
+
+      return {
+        ...prev,
+        [pairId]: newStatus,
+      };
+    });
+  }, []);
 
   useEffect(() => {
     Object.entries(pairsState).forEach(([pairId, state]) => {
@@ -165,7 +176,7 @@ export const Initializer = () => {
           handleNewMessage,
           setRemoteStream,
           setLocalStream,
-          handleVideoCallStatus,
+          onRemoteStreamChange,
         });
       }
     });
@@ -195,7 +206,7 @@ export const Initializer = () => {
             handleNewMessage,
             setRemoteStream,
             setLocalStream,
-            handleVideoCallStatus,
+            onRemoteStreamChange,
           });
         });
       }
@@ -224,7 +235,7 @@ export const Initializer = () => {
           setP2pChannels,
           setRemoteStream,
           setLocalStream,
-          handleVideoCallStatus,
+          onRemoteStreamChange,
         });
       }
 
@@ -352,43 +363,37 @@ export const Initializer = () => {
   );
 
   const joinVideoCall = useCallback(async () => {
-    const session = p2pInstancesRef.current[currentPairId];
+    const currentStatus = videoCallStatus[currentPairId] || 'off';
+    const p2pSession = p2pInstancesRef.current[currentPairId];
 
-    if (!session) return console.error('Сессия не найдена для звонка');
+    if (!p2pSession) return console.error('Сессия не найдена для звонка');
+    if (currentStatus === 'on' || currentStatus === 'outgoing') return;
 
-    setVideoCallStatus((statusMap) => {
-      const prevStatus = statusMap[currentPairId] || 'off';
-      return {
-        ...statusMap,
-        [currentPairId]:
-          prevStatus === 'off'
-            ? 'outgoing'
-            : prevStatus === 'incoming'
-              ? 'on'
-              : prevStatus,
-      };
-    });
-
-    session.addCameraStream().then((stream) => {
+    p2pSession.addCameraStream().then((stream) => {
       if (!stream) {
-        setVideoCallStatus((statusMap) => {
-          const prevStatus = statusMap[currentPairId] || 'off';
-          return {
-            ...statusMap,
-            [currentPairId]:
-              prevStatus === 'outgoing'
-                ? 'off'
-                : prevStatus === 'on'
-                  ? 'incoming'
-                  : prevStatus,
-          };
-        });
         return console.error('Поток не нашелся');
       }
 
+      setVideoCallStatus((statusMap) => {
+        let newStatus: VideoCallStatus = currentStatus;
+
+        if (currentStatus === 'off') {
+          newStatus = 'outgoing';
+        }
+        if (currentStatus === 'incoming') {
+          newStatus = 'on';
+          addStartVideoCallMessage(currentPairId);
+        }
+
+        return {
+          ...statusMap,
+          [currentPairId]: newStatus,
+        };
+      });
+
       setLocalStream(stream);
     });
-  }, [currentPairId]);
+  }, [currentPairId, videoCallStatus[currentPairId]]);
 
   const endVideoCall = useCallback(() => {
     const p2pInstance = p2pInstancesRef.current[currentPairId];
@@ -670,7 +675,7 @@ function initiateP2P({
   handleNewMessage,
   setRemoteStream,
   setLocalStream,
-  handleVideoCallStatus,
+  onRemoteStreamChange,
 }: {
   pair: Pair;
   userId: string;
@@ -681,10 +686,7 @@ function initiateP2P({
   handleNewMessage: (pairId: string, message?: Message) => void;
   setRemoteStream: React.Dispatch<React.SetStateAction<MediaStream | null>>;
   setLocalStream: React.Dispatch<React.SetStateAction<MediaStream | null>>;
-  handleVideoCallStatus: (
-    pairId: string,
-    setStatus: (status: VideoCallStatus) => VideoCallStatus,
-  ) => void;
+  onRemoteStreamChange: (pairId: string, is: boolean) => void;
 }) {
   const pairId = pair.pairId;
   const isInitiator = userId === pair.senderId;
@@ -715,21 +717,15 @@ function initiateP2P({
 
     // Переключаем статус (true/false) в стейте, чтобы ваш pairsState стал равен 3
     onStatusChange: (isConnected) => {
-      setP2pChannels((prev) => {
-        const next = { ...prev };
-        if (isConnected) {
-          console.log('p2p connected');
-          next[pairId] = true;
-        } else {
-          console.log('p2p disconnected');
-          setLocalStream(null);
-          setRemoteStream(null);
-          handleVideoCallStatus(pairId, () => 'off');
-          delete next[pairId];
-        }
-        return next;
-      });
-      if (!isConnected) {
+      setP2pChannels((prev) => ({ ...prev, [pairId]: isConnected }));
+
+      if (isConnected) {
+        console.log('p2p connected');
+      } else {
+        console.log('p2p disconnected');
+        setLocalStream(null);
+        setRemoteStream(null);
+        onRemoteStreamChange(pairId, false);
         delete p2pInstancesRef.current[pairId];
       }
     },
@@ -745,24 +741,14 @@ function initiateP2P({
     },
 
     onIncomingStream: (remoteStream) => {
-      handleVideoCallStatus(pairId, (status) => {
-        console.log('onIncomingStream. prev videoCallStatus: ', status);
-        if (status === 'off') {
-          return 'incoming';
-        }
-        if (status === 'outgoing') {
-          return 'on';
-        }
-        return status;
-      });
-
+      onRemoteStreamChange(pairId, true);
       setRemoteStream(remoteStream);
     },
 
     onEndVideoCall: () => {
       setLocalStream(null);
       setRemoteStream(null);
-      handleVideoCallStatus(pairId, () => 'off');
+      onRemoteStreamChange(pairId, false);
     },
   });
 
