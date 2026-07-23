@@ -35,4 +35,12 @@ export const formateFileSize = (bytes: number) => {
 
 export const formateCount = (n: number) => {
   return n < 10 ? n + '' : '9+';
-}
+};
+
+export const generateUserId = () => {
+  return (
+    'user-' +
+    Math.floor(Math.random() * 10) +
+    Math.floor(Math.random() * 26 + 10).toString(36)
+  );
+};

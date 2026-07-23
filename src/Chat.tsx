@@ -30,7 +30,7 @@ export const Chat: FC<{
   messages: Message[];
   sendText: (message: string) => void;
   sendFile: (message: File) => void;
-}> = ({ interlocutorId, connected, messages, sendText, sendFile }) => {
+}> = ({ interlocutorId, connected, messages = [], sendText, sendFile }) => {
   const [text, setText] = useState<string>('');
 
   const listRef = useRef<HTMLUListElement>(null);
@@ -113,7 +113,7 @@ export const Chat: FC<{
               ) : message.type === 'image' ? (
                 <ImageMessage {...message} />
               ) : (
-                <div style={{fontSize: 10, textAlign: 'center'}}>
+                <div style={{ fontSize: 10, textAlign: 'center' }}>
                   {message.start ? 'Call started' : 'Call ended'} at{' '}
                   {new Date(message.timestamp).toLocaleTimeString([], {
                     hour: '2-digit',
