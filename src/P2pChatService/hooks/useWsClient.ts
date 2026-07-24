@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { P2pWsClient } from '../server/p2p_ws';
+import { P2pWsClient } from '../webSocket/P2pWsClient';
 
 export const useWsClient = () => {
   const wsRef = useRef<P2pWsClient | null>(null);

@@ -1,8 +1,5 @@
-// websocket-client.ts
-
-// import { WsRequest, WsResponse } from "./ws_types";
-
 export type WsStatus = 'disconnected' | 'connecting' | 'connected';
+
 type StatusHandler = (status: WsStatus) => void;
 type MessageHandler<WsResponse> = (data: WsResponse) => void;
 
@@ -97,7 +94,7 @@ export class WebSocketClient<WsRequest, WsResponse> {
     }, delay);
   }
 
-  send(data: WsRequest): void {
+  protected send(data: WsRequest): void {
     if (this.ws?.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify(data));
     } else {

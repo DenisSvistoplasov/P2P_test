@@ -1,9 +1,5 @@
 import Peer, { SignalData } from '@workadventure/simple-peer';
 import { decrypt, encrypt, generateAliceKeys } from '../utils/cryptoUtils';
-import {
-  decryptIncomingTracks,
-  encryptOutgoingTracks,
-} from '../utils/cryptoUtilsForStream';
 
 const CHUNK_SIZE = 16384; // 16 КБ
 
@@ -25,7 +21,7 @@ const iceServers = [
   { urls: 'stun:stun.voipbuster.com:3478' },
 ];
 
-export type P2pMessage =
+type P2pMessage =
   | { type: 'text'; text: string }
   | { type: 'meta'; name: string; mime: string; size: number }
   | { type: 'endVideoCall' }
@@ -64,7 +60,6 @@ export class P2pSession {
   public isCryptoReady = false;
 
   private async tryCreateSharedKey() {
-    console.log('tryCreateSharedKey: ');
     if (this._aliceKeyPair && this._bobPublicKey) {
       this.sharedKey = await window.crypto.subtle.deriveKey(
         { name: 'ECDH', public: this._bobPublicKey }, // Чужой публичный ключ
@@ -74,7 +69,6 @@ export class P2pSession {
         ['encrypt', 'decrypt'], // Что этим ключом разрешено делать
       );
       this.isCryptoReady = true;
-      this.addDecryptVideoCallTransformer();
       console.log('Shared key created');
     }
   }
@@ -94,39 +88,6 @@ export class P2pSession {
       this.peer.removeStream(this.localStream);
       this.localStream.getTracks().forEach((track) => track.stop());
       this.localStream = null;
-    }
-  }
-
-  private addDecryptVideoCallTransformer() {
-    console.log(
-      'addDecryptVideoCallTransformer: ',
-      !!this.peer._pc,
-      !!this.sharedKey,
-    );
-
-    if (this.peer._pc && this.sharedKey) {
-      const sharedKey = this.sharedKey;
-      // this.peer._pc.ontrack = (event) => {
-      //   console.log('._pc.ontrack: ');
-
-      //   decryptIncomingTracks([event.receiver], sharedKey);
-      //   this.peer._onTrack(event);
-      // };
-      // this.peer._pc.addEventListener('track', (event) => {
-      //   console.log('On track. event.receiver: ', event.receiver);
-      // });
-
-      // const receivers = this.peer._pc.getReceivers();
-
-      // decryptIncomingTracks(receivers, this.sharedKey);
-    } else {
-      console.error(
-        'Cannot add decrypt transformer. peer._pc:',
-        this.peer._pc,
-        'sharedKey:',
-        this.sharedKey,
-      );
-      // setTimeout(() => this.addDecryptVideoCallTransformer(), 200);
     }
   }
 

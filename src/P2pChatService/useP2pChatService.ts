@@ -1,35 +1,16 @@
 import { SignalData } from '@workadventure/simple-peer';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Pair, SetAnswerBody, SetOfferBody } from './api/types';
+import { Pair, SetAnswerBody, SetOfferBody } from './webSocket/ws_types';
 import { useWsClient } from './hooks/useWsClient';
-import { P2pSession } from './api/simplePeer';
-import { WsStatus } from './server/webSocket';
+import { P2pSession } from './P2P/P2pSession';
+import { WsStatus } from './webSocket/WebSocketClient';
 import { usePlayIncomingCallRing } from './hooks/usePlayIncomingCallRing';
-import { generateUserId } from './utils/utils';
-
-type PairState = 0 | 1 | 2 | 3;
-export type VideoCallStatus = 'off' | 'incoming' | 'outgoing' | 'on';
-
-export type TextMessage = {
-  type: 'text';
-  text: string;
-  isOwner?: boolean;
-};
-export type ImageMessageType = {
-  type: 'image';
-  name: string;
-  mime: string;
-  url: string;
-  size: number; // bytes
-  isOwner?: boolean;
-};
-export type CallInfoMessage = {
-  type: 'callInfo';
-  start: boolean;
-  timestamp: number; // ms
-  duration?: number; // ms
-};
-export type Message = TextMessage | ImageMessageType | CallInfoMessage;
+import {
+  P2pChatMessage,
+  VideoCallStatus,
+  PairState,
+  CallInfoMessage,
+} from './types';
 
 export const useP2pChatService = ({
   userId,
@@ -38,7 +19,7 @@ export const useP2pChatService = ({
 }: {
   userId: string;
   currentPairId: string;
-  handleNewMessage: (pairId: string, message: Message) => void;
+  handleNewMessage: (pairId: string, message: P2pChatMessage) => void;
 }) => {
   const [wsStatus, setWsStatus] = useState<WsStatus>('disconnected');
   const [pairs, setPairs] = useState<Pair[]>([]);
@@ -46,7 +27,9 @@ export const useP2pChatService = ({
   const [videoCallStatus, setVideoCallStatus] = useState<
     Record<string, VideoCallStatus>
   >({});
-  const [videoInfoMessages, setVideoInfoMessages] = useState<Record<string, Message[]>>({});
+  const [videoInfoMessages, setVideoInfoMessages] = useState<
+    Record<string, P2pChatMessage[]>
+  >({});
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
 
@@ -66,7 +49,7 @@ export const useP2pChatService = ({
             ? 1
             : 0,
     }));
-  }, [pairs]);
+  }, [pairs, p2pChannels]);
 
   // Ringtone
   const [playIncomingCallRing, stopIncomingCallRing] =
@@ -78,18 +61,12 @@ export const useP2pChatService = ({
     else stopIncomingCallRing();
   }, [videoCallStatus, playIncomingCallRing, stopIncomingCallRing]);
 
-  const setOffer = useCallback(
-    (data: SetOfferBody) => ws.send({ type: 'setOffer', payload: data }),
-    [],
-  );
+  const setOffer = useCallback((data: SetOfferBody) => ws.setOffer(data), []);
 
-  const setAnswer = useCallback(
-    (data: SetAnswerBody) => ws.send({ type: 'setAnswer', payload: data }),
-    [],
-  );
+  const setAnswer = useCallback((data: SetAnswerBody) => ws.setAnser(data), []);
 
   const addStartVideoCallMessage = useCallback((pairId: string) => {
-    const startVideoCallMessage: Message = {
+    const startVideoCallMessage: P2pChatMessage = {
       type: 'callInfo',
       start: true,
       timestamp: Date.now(),
@@ -120,11 +97,13 @@ export const useP2pChatService = ({
       }
 
       if (!startVideoCallMessage) {
-        console.error('While creating endVideoCallMessage: startVideoCallMessage not found');
+        console.error(
+          'While creating endVideoCallMessage: startVideoCallMessage not found',
+        );
         return messagesMap;
       }
 
-      const endVideoCallMessage: Message = {
+      const endVideoCallMessage: P2pChatMessage = {
         type: 'callInfo',
         start: false,
         timestamp: now,
@@ -135,10 +114,7 @@ export const useP2pChatService = ({
 
       return {
         ...messagesMap,
-        [pairId]: [
-          ...(messagesMap[pairId] || []),
-          endVideoCallMessage,
-        ],
+        [pairId]: [...(messagesMap[pairId] || []), endVideoCallMessage],
       };
     });
   }, []);
@@ -169,7 +145,6 @@ export const useP2pChatService = ({
       };
     });
   }, []);
-
 
   // P2P initiator callbacks
   const createOnSignal = useCallback(
@@ -244,7 +219,11 @@ export const useP2pChatService = ({
   );
 
   const initiateP2P = useCallback((userId: string, pair: Pair) => {
-    console.log('initiateP2P. I am initiator: ', userId === pair.senderId, pair.pairId);
+    console.log(
+      'initiateP2P. I am initiator: ',
+      userId === pair.senderId,
+      pair.pairId,
+    );
     p2pInstancesRef.current[pair.pairId] = new P2pSession({
       initiator: userId === pair.senderId,
       onSignal: createOnSignal(userId, pair, userId === pair.senderId),
@@ -259,17 +238,13 @@ export const useP2pChatService = ({
   //
   useEffect(() => {
     if (!userId) return;
-    Object.entries(pairsWithState).forEach(([pairId, pair]) => {
-      if (pair.state == 2 && !p2pInstancesRef.current[pairId]) {
-        console.log('P2P reconnection', pairId);
+    pairsWithState.forEach((pair) => {
+      if (pair.state == 2 && !p2pInstancesRef.current[pair.pairId]) {
+        console.log('P2P reconnection', pair.pairId);
         initiateP2P(userId, pair);
       }
     });
   }, [userId, pairsWithState]);
-
-  // useEffect(() => {
-  //   userIdRef.current = userId;
-  // }, [userId]);
 
   useEffect(() => {
     currentPairIdRef.current = currentPairId;
@@ -283,7 +258,7 @@ export const useP2pChatService = ({
         setPairs(pairs);
 
         pairs.forEach((pair) => {
-          console.log('initiateP2P: on initial',);
+          console.log('initiateP2P: on initial');
           initiateP2P(userId, pair);
         });
       }
@@ -365,9 +340,8 @@ export const useP2pChatService = ({
 
     ws.onStatus(setWsStatus);
 
-    ws.send({ type: 'initial', payload: { userId } });
+    ws.requestInitial(userId);
   }, []);
-
   //
 
   const sendText = useCallback(
@@ -378,7 +352,7 @@ export const useP2pChatService = ({
 
       p2pInstance.sendText(text);
 
-      const message: Message = { type: 'text', text, isOwner: true };
+      const message: P2pChatMessage = { type: 'text', text, isOwner: true };
 
       handleNewMessage(currentPairId, message);
     },
@@ -393,7 +367,7 @@ export const useP2pChatService = ({
 
       p2pInstance.sendImage(file);
 
-      const message: Message = {
+      const message: P2pChatMessage = {
         type: 'image',
         name: file.name,
         mime: file.type,

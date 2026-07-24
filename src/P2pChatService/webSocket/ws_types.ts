@@ -1,3 +1,5 @@
+import { SignalData } from '@workadventure/simple-peer';
+
 export type P2pConnectionData = any;
 
 export type Pair = {
@@ -78,3 +80,15 @@ export type WsResponse =
   | WsSetOfferResponse
   | WsSetAnswerResponse
   | WsDeletePairResponse;
+  
+export type SetOfferBody = {
+  userId: string;
+  partnerId: string;
+  offer: SignalData;
+};
+
+export type SetAnswerBody = {
+  userId: string;
+  partnerId: string;
+  answer: SignalData;
+};

@@ -1,4 +1,3 @@
-
 export const generateAliceKeys = async () => {
   const aliceKeyPair = await crypto.subtle.generateKey(
     { name: 'ECDH', namedCurve: 'P-256' },

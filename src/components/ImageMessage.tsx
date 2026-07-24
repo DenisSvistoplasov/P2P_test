@@ -1,7 +1,7 @@
 import { CSSProperties, FC, useMemo, useState } from 'react';
-import { formateFileSize } from './utils/utils';
-import { ImageMessageType } from './Chat';
-import { DownloadIcon } from './components/icons/DownloadIcon';
+import { formateFileSize } from '../utils/utils';
+import { DownloadIcon } from './icons/DownloadIcon';
+import { ImageMessageType } from '../P2pChatService/types';
 
 export const ImageMessage: FC<ImageMessageType> = ({
   name,

@@ -1,33 +1,12 @@
 import { FC, useEffect, useRef, useState } from 'react';
-import { formateTimeDuration } from './utils/utils';
 import { ImageMessage } from './ImageMessage';
-
-export type TextMessage = {
-  type: 'text';
-  text: string;
-  isOwner?: boolean;
-};
-export type ImageMessageType = {
-  type: 'image';
-  name: string;
-  mime: string;
-  url: string;
-  size: number; // bytes
-  isOwner?: boolean;
-};
-export type CallInfoMessage = {
-  type: 'callInfo';
-  start: boolean;
-  timestamp: number; // ms
-  duration?: number; // ms
-};
-
-export type Message = TextMessage | ImageMessageType | CallInfoMessage;
+import { formateTimeDuration } from '../utils/utils';
+import { P2pChatMessage } from '../P2pChatService/types';
 
 export const Chat: FC<{
   interlocutorId: string;
   connected: boolean;
-  messages: Message[];
+  messages: P2pChatMessage[];
   sendText: (message: string) => void;
   sendFile: (message: File) => void;
 }> = ({ interlocutorId, connected, messages = [], sendText, sendFile }) => {

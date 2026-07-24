@@ -1,30 +1,19 @@
-import {
-  createContext,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from 'react';
-import { Pair, SetAnswerBody, SetOfferBody } from './api/types';
-import { CallInfoMessage, Chat, Message } from './Chat';
-import { P2pSession } from './api/simplePeer';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Chat } from './components/Chat';
 import { VideoPlayer } from './components/VideoPlayer';
-import { P2pWsClient } from './server/p2p_ws';
-import { WsStatus } from './server/webSocket';
 import { PhoneButton } from './components/PhoneButton';
-import { usePlayIncomingCallRing } from './hooks/usePlayIncomingCallRing';
-import { useWsClient } from './hooks/useWsClient';
 import { CallingPhoneIcon } from './components/icons/CallingPhoneIcon';
-import { initiateP2P } from './initiateP2P';
-import { useP2pChatService, VideoCallStatus } from './useP2pChatService';
+import { useP2pChatService } from './P2pChatService/useP2pChatService';
 import { generateUserId } from './utils/utils';
+import { P2pChatMessage } from './P2pChatService/types';
 
 export const Initializer = () => {
   const userId = localStorage.getItem('userId') || generateUserId();
 
   const [currentPairId, setCurrentPairId] = useState<string>('');
-  const [messagesMap, setMessagesMap] = useState<Record<string, Message[]>>({});
+  const [messagesMap, setMessagesMap] = useState<
+    Record<string, P2pChatMessage[]>
+  >({});
   const [unreadMessagesCount, setUnreadMessagesCount] = useState<
     Record<string, number>
   >({});
@@ -34,19 +23,22 @@ export const Initializer = () => {
 
   const currentPairIdRef = useRef(currentPairId);
 
-  const handleNewMessage = useCallback((pairId: string, message: Message) => {
-    setMessagesMap((prev) => ({
-      ...prev,
-      [pairId]: [...(prev[pairId] || []), message],
-    }));
-
-    if (message && pairId !== currentPairIdRef.current) {
-      setUnreadMessagesCount((prev) => ({
+  const handleNewMessage = useCallback(
+    (pairId: string, message: P2pChatMessage) => {
+      setMessagesMap((prev) => ({
         ...prev,
-        [pairId]: prev[pairId] ? prev[pairId] + 1 : 1,
+        [pairId]: [...(prev[pairId] || []), message],
       }));
-    }
-  }, []);
+
+      if (message && pairId !== currentPairIdRef.current) {
+        setUnreadMessagesCount((prev) => ({
+          ...prev,
+          [pairId]: prev[pairId] ? prev[pairId] + 1 : 1,
+        }));
+      }
+    },
+    [],
+  );
 
   const {
     wsStatus,
@@ -69,13 +61,11 @@ export const Initializer = () => {
     [pairsWithState, currentPairId],
   );
 
-  //
   useEffect(() => {
-    if (videoCallFullscreen !== 'off' && videoCallStatus[1] === 'off') {
+    if (videoCallFullscreen !== 'off' && videoCallStatus[currentPairId] === 'off') {
       setVideoCallFullscreen('off');
     }
-  }, [videoCallStatus]);
-  //
+  }, [videoCallStatus, currentPairId, videoCallFullscreen]);
 
   useEffect(() => {
     localStorage.setItem('userId', userId);
@@ -252,7 +242,7 @@ export const Initializer = () => {
                       currentPairId.split('_vs_').find((id) => id != userId)!
                     }
                     connected={currentPairStatus === 3}
-                    messages={messagesMap[currentPairId]||[]}
+                    messages={messagesMap[currentPairId] || []}
                     sendText={sendText}
                     sendFile={sendFile}
                   />
